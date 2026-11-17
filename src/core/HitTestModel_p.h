@@ -1,4 +1,5 @@
 #pragma once
+#include "FrameGeometry_p.h"
 #include "HostAdapter_p.h"
 
 #include <QPointer>
@@ -28,7 +29,7 @@ public:
             return HitRegion::Client;
         auto contains = [&](const QPointer<QObject>& item)
         { return item && host.owns(item) && host.contains(item, point); };
-        if (contains(maximizeButton) && maximizeButton->property("enabled").toBool())
+        if (contains(maximizeButton) && canMaximize(host) && maximizeButton->property("enabled").toBool())
             return HitRegion::MaximizeButton;
         // Disabled visible controls still reserve their client input area.
         if (contains(maximizeButton) || std::ranges::any_of(interactiveItems, contains))

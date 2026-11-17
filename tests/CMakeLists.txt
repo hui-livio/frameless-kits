@@ -73,3 +73,25 @@ foreach(mode default static core widgets quick)
         target_compile_definitions(${check_target} PRIVATE FRAMELESSKIT_BUILD_${upper_mode})
     endif()
 endforeach()
+
+if(WIN32 AND BUILD_WIDGETS)
+    framelesskit_add_test(framelesskit_widgets_native_tests WidgetsNativeTests.cpp)
+    target_link_libraries(framelesskit_widgets_native_tests PRIVATE FramelessKit::Widgets user32)
+    set_tests_properties(framelesskit_widgets_native_tests PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        TIMEOUT 90
+        RUN_SERIAL TRUE
+    )
+endif()
+
+if(WIN32 AND BUILD_QUICK)
+    framelesskit_add_test(framelesskit_quick_native_tests QuickNativeTests.cpp)
+    target_link_libraries(framelesskit_quick_native_tests PRIVATE FramelessKit::Quick user32)
+    set_tests_properties(framelesskit_quick_native_tests PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        TIMEOUT 90
+        RUN_SERIAL TRUE
+    )
+endif()

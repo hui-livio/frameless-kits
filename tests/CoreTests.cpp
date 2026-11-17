@@ -29,6 +29,7 @@ public:
     {
         return items.value(item).contains(point);
     }
+    bool supportsMaximizeButton(const QObject*) const override { return true; }
     bool fullScreen() const override
     {
         return fullscreen;
@@ -67,6 +68,27 @@ private slots:
         model.titleBar = temporary;
         delete temporary;
         QCOMPARE(model.hitTest(host, { 10, 10 }), HitRegion::Client);
+    }
+    void resizeGeometry()
+    {
+        const QSizeF extent(800, 600), border(8, 8);
+        const QList<QPointF> points{{0, 0}, {400, 0}, {799, 0}, {0, 300}, {799, 300},
+                                    {0, 599}, {400, 599}, {799, 599}};
+        const QList<Qt::Edges> expected{Qt::LeftEdge | Qt::TopEdge, Qt::TopEdge, Qt::RightEdge | Qt::TopEdge,
+            Qt::LeftEdge, Qt::RightEdge, Qt::LeftEdge | Qt::BottomEdge, Qt::BottomEdge, Qt::RightEdge | Qt::BottomEdge};
+        for (int i = 0; i < points.size(); ++i)
+        {
+            QCOMPARE(resizeEdges(points[i], extent, border, true, true, false, false), expected[i]);
+            QCOMPARE(resizeEdges(points[i], extent, border, true, true, true, false), Qt::Edges{});
+            QCOMPARE(resizeEdges(points[i], extent, border, true, true, false, true), Qt::Edges{});
+        }
+        QCOMPARE(resizeEdges({0, 0}, extent, border, false, true, false, false), Qt::Edges(Qt::TopEdge));
+        QCOMPARE(resizeEdges({0, 0}, extent, border, true, false, false, false), Qt::Edges(Qt::LeftEdge));
+        QCOMPARE(resizeEdges({0, 0}, extent, border, false, false, false, false), Qt::Edges{});
+        QCOMPARE(resizeEdges({-1, 0}, extent, border, true, true, false, false), Qt::Edges{});
+        QCOMPARE(resizeEdges({800, 0}, extent, border, true, true, false, false), Qt::Edges{});
+        QCOMPARE(logicalClientPoint({-1800, -250}, {-1920, -400}, 1.25), QPointF(96, 120));
+        QCOMPARE(logicalClientPoint({-1740, -220}, {-1920, -400}, 1.5), QPointF(120, 120));
     }
     void bindingAndMaterials()
     {

@@ -1,9 +1,11 @@
 #pragma once
 #include <QtCore/qglobal.h>
 
-// Define FRAMELESSKIT_STATIC when building/using static libraries or compiling
-// the sources directly into an application. Without it, shared-library use is
-// the default. Each DLL defines only its own FRAMELESSKIT_BUILD_* macro.
+/**
+ * @brief The FRAMELESSKIT_CORE_EXPORT macro is used for exporting symbols from the FramelessKit core library.
+ * @brief The FRAMELESSKIT_WIDGETS_EXPORT macro is used for exporting symbols from the FramelessKit widgets library.
+ * @brief The FRAMELESSKIT_QUICK_EXPORT macro is used for exporting symbols from the FramelessKit quick library.
+ */
 #if defined(FRAMELESSKIT_STATIC)
     #define FRAMELESSKIT_CORE_EXPORT
     #define FRAMELESSKIT_WIDGETS_EXPORT

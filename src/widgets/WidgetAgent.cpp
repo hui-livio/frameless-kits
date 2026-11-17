@@ -3,6 +3,9 @@
 
 #include <FramelessKit/WidgetAgent.h>
 #include <QAbstractButton>
+#include <QCoreApplication>
+#include <QEnterEvent>
+#include <QMouseEvent>
 #include <QPointer>
 #include <QWidget>
 #include <QWindow>
@@ -47,6 +50,59 @@ public:
     bool fullScreen() const override
     {
         return m_root && m_root->isFullScreen();
+    }
+    Qt::WindowFlags flags() const override { return m_root ? m_root->windowFlags() : Qt::WindowFlags{}; }
+    Qt::WindowStates states() const override { return m_root ? m_root->windowState() : Qt::WindowStates{}; }
+    QSize minimumSize() const override { return m_root ? m_root->minimumSize() : QSize{}; }
+    QSize maximumSize() const override { return m_root ? m_root->maximumSize() : QSize{}; }
+    void setFrameless(bool enabled) override
+    {
+        if (!m_root) return;
+        const bool visible = m_root->isVisible();
+        const auto state = m_root->windowState();
+        const QRect geometry = m_root->geometry();
+        m_root->setWindowFlag(Qt::FramelessWindowHint, enabled);
+        if (!state) m_root->setGeometry(geometry);
+        if (visible) { m_root->setWindowState(state); m_root->show(); }
+    }
+    void setStates(Qt::WindowStates state) override { if (m_root) m_root->setWindowState(state); }
+    void close() override { if (m_root) m_root->close(); }
+    bool supportsMaximizeButton(const QObject* item) const override
+    {
+        return qobject_cast<const QAbstractButton*>(item);
+    }
+    void buttonEvent(QObject* object, QEvent::Type type, QPointF point, Qt::MouseButton button,
+                     Qt::MouseButtons buttons) override
+    {
+        auto* widget = qobject_cast<QAbstractButton*>(object);
+        if (!widget || !m_root || !owns(widget)) return;
+        const auto local = widget->mapFrom(m_root, point);
+        const auto global = m_root->mapToGlobal(point);
+        if (type == QEvent::Enter)
+        {
+            QEnterEvent event(local, point, global);
+            QCoreApplication::sendEvent(widget, &event);
+        }
+        else if (type == QEvent::Leave)
+        {
+            QEvent event(type);
+            QCoreApplication::sendEvent(widget, &event);
+        }
+        else
+        {
+            QMouseEvent event(type, local, point, global, button, buttons, QGuiApplication::keyboardModifiers());
+            QCoreApplication::sendEvent(widget, &event);
+        }
+    }
+    void cancelButton(QObject* object) override
+    {
+        if (auto* button = qobject_cast<QAbstractButton*>(object))
+        {
+            button->setDown(false);
+            if (QWidget::mouseGrabber() == button) button->releaseMouse();
+            QEvent leave(QEvent::Leave);
+            QCoreApplication::sendEvent(button, &leave);
+        }
     }
 
 private:

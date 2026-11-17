@@ -1,4 +1,4 @@
-// Architecture demo: native frame and material effects are intentionally deferred.
+// Frameless window demo. Window materials are intentionally not implemented.
 
 import QtQuick
 import QtQuick.Controls
@@ -92,7 +92,7 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
-            text: qsTr("当前展示模块接入与配置架构。\n原生拖动、缩放、Snap 和材质效果尚未实现。\n非纯色请求会报告原因并保持纯色。")
+            text: qsTr("拖动标题栏移动窗口，双击最大化/还原。\n边缘可缩放，右击标题栏可打开系统菜单。\n非纯色请求会报告原因并保持纯色。")
         }
 
         RowLayout {
@@ -151,7 +151,7 @@ Window {
 
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: qsTr("架构阶段：窗口保留系统边框，材质效果暂缓实现。")
+            text: qsTr("无边框窗口已启用；窗口材质暂不实现。")
         }
     }
 }

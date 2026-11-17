@@ -1,29 +1,18 @@
 #include "PlatformBackend_p.h"
 namespace FramelessKit::Internal
 {
-namespace
+std::unique_ptr<PlatformBackend> createQtFallbackBackend(HostAdapter& host, const HitTestModel& hitTest,
+                                                         PlatformBackend::Diagnostic diagnostic)
 {
-class QtFallbackBackend final : public PlatformBackend
-{
-public:
-    bool applyMaterial(Material material, QString& error) override
-    {
-        if (material == Material::Solid)
-            return true;
-        error = QStringLiteral("Material rendering is deferred in the "
-                               "architecture scaffold; using Solid.");
-        return false;
-    }
-};
-} // namespace
-std::unique_ptr<PlatformBackend> createQtFallbackBackend()
-{
-    return std::make_unique<QtFallbackBackend>();
+    auto backend = std::make_unique<PlatformBackend>(host, hitTest, std::move(diagnostic));
+    backend->start();
+    return backend;
 }
 #ifndef Q_OS_WIN
-std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter&)
+std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const HitTestModel& hitTest,
+                                                       PlatformBackend::Diagnostic diagnostic)
 {
-    return createQtFallbackBackend();
+    return createQtFallbackBackend(host, hitTest, std::move(diagnostic));
 }
 #endif
 } // namespace FramelessKit::Internal

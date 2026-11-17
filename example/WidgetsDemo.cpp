@@ -1,4 +1,4 @@
-// Architecture demo: native frame and material effects are intentionally deferred.
+// Frameless window demo. Window materials are intentionally not implemented.
 
 #include <FramelessKit/Initialization.h>
 #include <FramelessKit/WidgetAgent.h>
@@ -54,8 +54,8 @@ int main(int argc, char* argv[])
     titleLayout->addWidget(titleControls);
     layout->addWidget(titleBar);
 
-    auto* description = new QLabel(QObject::tr("当前展示模块接入与配置架构。\n"
-                                               "原生拖动、缩放、Snap 和材质效果尚未实现。\n"
+    auto* description = new QLabel(QObject::tr("拖动标题栏移动窗口，双击最大化/还原。\n"
+                                               "边缘可缩放，右击标题栏可打开系统菜单。\n"
                                                "非纯色请求会报告原因并保持纯色。"),
                                    &window);
     description->setAlignment(Qt::AlignCenter);
@@ -76,7 +76,7 @@ int main(int argc, char* argv[])
     materialLayout->addStretch();
     layout->addLayout(materialLayout);
 
-    auto* feedback = new QLabel(QObject::tr("架构阶段：窗口保留系统边框，材质效果暂缓实现。"), &window);
+    auto* feedback = new QLabel(QObject::tr("无边框窗口已启用；窗口材质暂不实现。"), &window);
     feedback->setWordWrap(true);
     layout->addWidget(feedback);
 

@@ -38,12 +38,15 @@ public:
     Material material() const;
     // 生效的窗口材质类型
     Material effectiveMaterial() const;
+
 public slots:
+    // 设置窗口材质类型,实时切换
     void setMaterial(Material material);
+
 signals:
-    void materialChanged();
-    void effectiveMaterialChanged();
-    void errorOccurred(const QString& message);
+    void materialChanged();                     // 窗口材质类型改变
+    void effectiveMaterialChanged();            // 生效的窗口材质类型改变
+    void errorOccurred(const QString& message); // 错误信号, message 为错误信息
 
 private:
     class Private;

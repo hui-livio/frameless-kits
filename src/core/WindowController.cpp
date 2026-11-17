@@ -50,11 +50,12 @@ WindowController::WindowController(std::unique_ptr<HostAdapter> host, bool quick
                 m_bound = false;
                 m_backend.reset();
             });
-    m_backend = createPlatformBackend(*m_host);
     m_bound   = true;
+    m_backend = createPlatformBackend(*m_host, m_hitTest, [this](const QString& error) { report(error, true); });
 }
 WindowController::~WindowController()
 {
+    m_backend.reset();
     if (m_bound && m_host && bindings().value(m_host->host()) == this)
         bindings().remove(m_host->host());
 }
@@ -101,6 +102,12 @@ bool WindowController::setMaximizeButton(QObject* item)
 {
     if (!accepts(item))
         return false;
+    if (item && !m_host->supportsMaximizeButton(item))
+    {
+        report(QStringLiteral("Maximize button must be a QAbstractButton or a Qt Quick Controls AbstractButton."));
+        return false;
+    }
+    m_backend->resetInput();
     m_hitTest.maximizeButton = item;
     return true;
 }

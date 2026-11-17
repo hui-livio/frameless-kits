@@ -2,7 +2,10 @@
 #include "../core/WindowController.h"
 
 #include <FramelessKit/WindowAgent.h>
+#include <QCoreApplication>
 #include <QHash>
+#include <QHoverEvent>
+#include <QMouseEvent>
 #include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -47,6 +50,41 @@ public:
     bool fullScreen() const override
     {
         return m_window && m_window->visibility() == QWindow::FullScreen;
+    }
+    bool supportsMaximizeButton(const QObject* item) const override
+    {
+        return item && item->inherits("QQuickAbstractButton");
+    }
+    void buttonEvent(QObject* object, QEvent::Type type, QPointF point, Qt::MouseButton button,
+                     Qt::MouseButtons buttons) override
+    {
+        auto* item = qobject_cast<QQuickItem*>(object);
+        if (!item || !m_window || !owns(item))
+            return;
+        if (type == QEvent::Leave)
+        {
+            QHoverEvent leave(QEvent::HoverLeave, QPointF{}, QPointF{}, QPointF{},
+                              QGuiApplication::keyboardModifiers());
+            QCoreApplication::sendEvent(item, &leave);
+            return;
+        }
+        if (type == QEvent::Enter)
+            type = QEvent::MouseMove;
+        QMouseEvent event(type, point, point, m_window->mapToGlobal(point), button, buttons,
+                          QGuiApplication::keyboardModifiers());
+        QCoreApplication::sendEvent(m_window, &event);
+    }
+    void cancelButton(QObject* object) override
+    {
+        if (auto* item = qobject_cast<QQuickItem*>(object))
+        {
+            item->ungrabMouse();
+            QEvent cancel(QEvent::UngrabMouse);
+            QCoreApplication::sendEvent(item, &cancel);
+            QHoverEvent leave(QEvent::HoverLeave, QPointF{}, QPointF{}, QPointF{},
+                              QGuiApplication::keyboardModifiers());
+            QCoreApplication::sendEvent(item, &leave);
+        }
     }
 
 private:

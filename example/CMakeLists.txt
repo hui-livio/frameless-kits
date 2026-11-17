@@ -5,6 +5,7 @@ if(BUILD_WIDGETS)
         target_compile_options(framelesskit_widgets_demo PRIVATE /utf-8)
     endif()
 endif()
+
 if(BUILD_QUICK)
     qt_add_executable(framelesskit_quick_demo QuickMain.cpp)
     target_link_libraries(framelesskit_quick_demo PRIVATE FramelessKit::Quick)
