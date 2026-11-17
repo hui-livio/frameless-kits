@@ -29,7 +29,11 @@ int main(int argc, char* argv[])
     auto* titleBar = new QWidget(&window);
     titleBar->setFixedHeight(44);
     auto* titleLayout = new QHBoxLayout(titleBar);
+#ifdef Q_OS_MACOS
+    titleLayout->setContentsMargins(80, 0, 8, 0);
+#else
     titleLayout->setContentsMargins(8, 0, 8, 0);
+#endif
     titleLayout->addWidget(new QLabel(QObject::tr("我的应用"), titleBar));
     titleLayout->addStretch();
 
@@ -51,13 +55,25 @@ int main(int argc, char* argv[])
     controlsLayout->addWidget(minimize);
     controlsLayout->addWidget(maximize);
     controlsLayout->addWidget(close);
+#ifdef Q_OS_MACOS
+    // Use Cocoa's standard traffic-light controls on the left.
+    minimize->hide();
+    maximize->hide();
+    close->hide();
+#endif
     titleLayout->addWidget(titleControls);
     layout->addWidget(titleBar);
 
-    auto* description = new QLabel(QObject::tr("拖动标题栏移动窗口，双击最大化/还原。\n"
-                                               "边缘可缩放，右击标题栏可打开系统菜单。\n"
-                                               "非纯色请求会报告原因并保持纯色。"),
-                                   &window);
+#ifdef Q_OS_MACOS
+    const QString descriptionText = QObject::tr("拖动标题栏移动窗口，双击遵循系统设置。\n"
+                                                "使用左上角系统按钮控制窗口，边缘可缩放。\n"
+                                                "非纯色请求会报告原因并保持纯色。");
+#else
+    const QString descriptionText = QObject::tr("拖动标题栏移动窗口，双击最大化/还原。\n"
+                                                "边缘可缩放，右击标题栏可打开系统菜单。\n"
+                                                "非纯色请求会报告原因并保持纯色。");
+#endif
+    auto* description = new QLabel(descriptionText, &window);
     description->setAlignment(Qt::AlignCenter);
     description->setWordWrap(true);
     layout->addWidget(description, 1);

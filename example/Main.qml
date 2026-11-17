@@ -42,7 +42,7 @@ Window {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
+                anchors.leftMargin: Qt.platform.os === "osx" ? 80 : 8
                 anchors.rightMargin: 8
 
                 Label {
@@ -62,12 +62,14 @@ Window {
                     }
 
                     Button {
+                        visible: Qt.platform.os !== "osx"
                         text: qsTr("最小化")
                         onClicked: root.showMinimized()
                     }
 
                     Button {
                         id: maximizeButtonItem
+                        visible: Qt.platform.os !== "osx"
 
                         text: root.visibility === Window.Maximized ? qsTr("还原") : qsTr("最大化")
                         onClicked: {
@@ -79,6 +81,7 @@ Window {
                     }
 
                     Button {
+                        visible: Qt.platform.os !== "osx"
                         text: qsTr("关闭")
                         onClicked: root.close()
                     }
@@ -92,7 +95,9 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
-            text: qsTr("拖动标题栏移动窗口，双击最大化/还原。\n边缘可缩放，右击标题栏可打开系统菜单。\n非纯色请求会报告原因并保持纯色。")
+            text: Qt.platform.os === "osx"
+                ? qsTr("拖动标题栏移动窗口，双击遵循系统设置。\n使用左上角系统按钮控制窗口，边缘可缩放。\n非纯色请求会报告原因并保持纯色。")
+                : qsTr("拖动标题栏移动窗口，双击最大化/还原。\n边缘可缩放，右击标题栏可打开系统菜单。\n非纯色请求会报告原因并保持纯色。")
         }
 
         RowLayout {

@@ -1,6 +1,6 @@
 # 架构落地说明
 
-本次按“先搭架构，效果实现暂缓”收敛设计文档。未修改原设计稿；本文件说明当前可编译实现与设计目标的差异。
+本文件记录当前实现与设计目标的差异。原设计稿不变；目前已实现 Windows 无边框行为，并接入待 Mac 实机验证的 Cocoa 后端，窗口材质仍暂缓。
 
 ## 分层
 
@@ -25,9 +25,9 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 - **Runtime**：检查 QGuiApplication 和 GUI 线程，维护公共/Quick 初始化状态；重复成功调用幂等，false→true 只补 Quick，true→false 不撤销。首次公共初始化不能晚于窗口创建；补 Quick 初始化不能晚于首个 QQuickWindow。
 - **WindowController**：独占逻辑绑定注册表、重复绑定保护、统一错误通知、弱注册对象；只接受本窗口内的对象。销毁解除逻辑绑定，不创建原生句柄。
 - **HostAdapter**：宿主对象、既有 QWindow 查询、对象归属、逻辑坐标命中、全屏状态。QWidget 和 QQuickItem 的映射分别实现；后续原生后端通过该边界扩展宿主操作。
-- **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘、模态输入和原生按钮序列留待平台实现。
+- **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘由平台后端优先判断；Windows 后端处理模态输入与原生按钮序列。
 - **MaterialController**：保留 requested / applied，统一应用失败后的 Solid 降级。当前后端仅接受 Solid。
-- **PlatformBackend**：原生操作边界。Windows 工厂已独立，目前明确使用无效果的 Qt 占位回退；不会安装 WndProc subclass 或修改 DWM。
+- **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 及非原生平台插件使用 Qt 回退。
 
 ## 统一初始化的链接方式
 
@@ -39,14 +39,12 @@ Core 实现唯一 `initialize(bool)`，不引用 QtQuick。Quick 模块将 `src/
 
 Widgets Agent 以宿主为 QObject 父对象，PIMPL 拥有 Controller。QML Agent 由 QML 对象树拥有，通过 QQmlParserStatus 在组件完成阶段建立绑定，配置顺序不影响初始请求；window 改变时重建逻辑 Controller。注册 UI 对象只保存 QPointer，不接管所有权。
 
-当前只建立逻辑生命周期，没有 NativeWindowBinding、HWND generation、surface 销毁/重放、原生状态恢复和后台材质刷新。这些必须在实际后端实现时增加，并补对应自动测试与实机验证，不能将当前逻辑生命周期测试当作原生生命周期完成。
+Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用时重建绑定；generation 用于拒绝过期的原生回调。Cocoa 通过 NSView.window 观察器跟踪 NSWindow 变化，对绑定对象安装独立的运行时子类以维持标题栏设置；不替换 Qt 的窗口 delegate，也不修改未绑定窗口的类。解除绑定时移除观察器、清理关联状态并恢复模块管理的原生属性。模块仍按进程生命周期加载，不支持任意热卸载。材质资源重放不在当前范围。
 
-## 后续扩展顺序
+## 待验证与后续工作
 
-1. 扩展 HostAdapter 的窗口能力、状态/尺寸约束及宿主操作；实现 Qt 公共 API 的拖动/缩放回退。
-2. 原型验证 Qt 与 Windows 消息次序，再加入 NativeWindowBinding、FrameController、几何和 DPI 处理。
-3. 实现表面策略、背景所有权、MaterialController 的 pending / 重放与 WindowsMaterialBackend。
-4. 验证标准按钮事件序列后实现 CaptionController / Snap，避免重复触发业务 clicked 命令。
-5. 增加实机材质、跨屏缩放、系统策略与视觉回归验收。
-
-这些能力目前均未启用；`ENABLE_LEGACY_ACCENT` 仅预留编译配置。
+- Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC 和 AppKit；尚无 Mac 编译与 example 运行证据。
+- Windows example 的 DWM 边框/阴影与基本窗口命令已获用户确认，Windows 11 Snap 弹层及跨屏 DPI 仍待验证。
+- Linux 仍是 Qt 回退，尚未接入 X11/Wayland 专用菜单与阴影。
+- 按当前用户要求，以 Widgets / QML example 的实际效果验收，不新增 UT。
+- 材质功能仍未启用；`ENABLE_LEGACY_ACCENT` 仅预留编译配置。

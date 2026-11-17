@@ -1,18 +1,16 @@
 # FramelessKit
 
-基于 Qt 6.8+、C++20 的无边框窗口模块。当前交付为**架构骨架**，不是窗口效果实现。
+基于 Qt 6.8+、C++20 的无边框窗口模块，提供 Widgets 与 QML 两种接入方式。
 
 ## 当前范围
 
-| 已实现 | 暂缓实现 |
-| --- | --- |
-| Core / Widgets / Quick 三库及命名空间 target | Windows 原生消息链、客户区和 HWND 重建 |
-| main 统一初始化、Quick Alpha 初始化接入 | 无边框拖动、八方向缩放、系统菜单 |
-| Agent PIMPL、重复绑定保护、弱引用、对象归属校验 | Snap Layout 与原生按钮输入桥接 |
-| 内部 HostAdapter、HitTestModel、MaterialController、PlatformBackend | 像素透明、Blur、Acrylic、Mica / Mica Alt |
-| 标准 QML 模块、静态插件、安装与按组件消费 | 材质视觉、DPI、任务栏和多平台实机验收 |
+| 平台 | 当前实现 | 验证状态 |
+| --- | --- | --- |
+| Windows | 隐藏系统标题栏、保留 DWM 边框/阴影、命中/缩放、系统菜单、最大化按钮输入桥接 | 两个 example 编译通过；用户已确认阴影及最小化、最大化/还原、关闭正常；Windows 11 Snap 弹层尚未验证 |
+| macOS | Cocoa 原生窗口、全尺寸内容区、系统阴影与红黄绿按钮、窗口重建及解绑恢复 | 已接入源码与构建分支，尚未在 Mac 编译或运行 |
+| Linux | Qt 公共 API 的无边框拖动/缩放回退 | 尚无专用阴影实现，X11/Wayland 菜单对齐待完成 |
 
-窗口目前保留系统边框，`titleBar` / `maximizeButton` 只保存配置，不触发原生行为。`material` 保留请求，所有非 `Solid` 请求报告诊断并保持 `effectiveMaterial == Solid`；不会把占位后端标成材质成功。默认 `Solid` 不接管或修改应用背景。
+材质不在本轮实现范围。`material` 保留请求，所有非 `Solid` 请求报告诊断并保持 `effectiveMaterial == Solid`；默认 `Solid` 不接管应用背景。
 
 ## 构建（不使用 Presets）
 
@@ -141,3 +139,24 @@ $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
 ```
 
 两个示例都支持 `--smoke-test`，用于创建窗口、接通 API、进入事件循环后自动退出；这只是运行检查，不进行视觉效果验收。
+
+## macOS example 验收
+
+macOS 自动选择 Cocoa 后端，Core 私有链接 AppKit，使用 Objective-C++20 / ARC；不需要应用引入原生头文件。非 Cocoa 平台插件（例如 offscreen）仍使用 Qt 回退。
+
+```sh
+cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/macos -DBUILD_TESTING=OFF
+cmake --build build/macos --target framelesskit_widgets_demo framelesskit_quick_demo
+./build/macos/bin/framelesskit_widgets_demo
+./build/macos/bin/framelesskit_quick_demo
+```
+
+两个示例在 macOS 上保留系统红黄绿按钮，隐藏重复的自定义窗口按钮，并给左上角原生控件预留空间。请在 Mac 上检查：
+
+- 自定义标题栏、系统阴影、原生按钮显示是否正常；输入框区域不能拖动窗口。
+- 标题栏拖动、窗口边缘缩放，以及最小尺寸约束。
+- 红黄绿按钮的关闭、最小化、恢复、进入/退出全屏；双击标题栏的系统偏好。
+- 隐藏后再次显示、多个窗口分别关闭，以及 QML Agent 换绑窗口后的样式恢复。
+
+当前仅有 Windows 环境的构建验证；上述 Mac 运行效果仍待实机验收。不以 Windows 构建成功代替 Cocoa 分支的编译或运行验证。

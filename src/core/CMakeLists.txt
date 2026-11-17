@@ -21,7 +21,12 @@ if(WIN32)
     target_compile_definitions(fk_core PRIVATE
         FRAMELESSKIT_ENABLE_LEGACY_ACCENT=$<BOOL:${ENABLE_LEGACY_ACCENT}>
     )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_sources(fk_core PRIVATE CocoaBackend.mm)
+    set_source_files_properties(CocoaBackend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(fk_core PRIVATE "-framework AppKit")
 endif()
+
 install(FILES
     "${PROJECT_SOURCE_DIR}/include/FramelessKit/Export.h"
     "${PROJECT_SOURCE_DIR}/include/FramelessKit/Initialization.h"

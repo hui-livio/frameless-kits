@@ -8,7 +8,7 @@ std::unique_ptr<PlatformBackend> createQtFallbackBackend(HostAdapter& host, cons
     backend->start();
     return backend;
 }
-#ifndef Q_OS_WIN
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
 std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const HitTestModel& hitTest,
                                                        PlatformBackend::Diagnostic diagnostic)
 {
