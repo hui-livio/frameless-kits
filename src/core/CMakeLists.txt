@@ -20,6 +20,7 @@ if(WIN32)
     )
 endif()
 install(FILES
+    "${PROJECT_SOURCE_DIR}/include/FramelessKit/Export.h"
     "${PROJECT_SOURCE_DIR}/include/FramelessKit/Initialization.h"
     "${PROJECT_SOURCE_DIR}/include/FramelessKit/Material.h"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"

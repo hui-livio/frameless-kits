@@ -1,5 +1,5 @@
 #pragma once
-#include <FramelessKit/QuickExport.h>
+#include <FramelessKit/Export.h>
 #include <QObject>
 #include <QQmlListProperty>
 #include <QQmlParserStatus>

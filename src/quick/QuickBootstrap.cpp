@@ -1,7 +1,6 @@
-// Compiled into Quick consumers so static archive elimination cannot discard
+// Linked directly into Quick consumers so static archive elimination cannot discard
 // initialize(true)'s adapter. Core remains completely independent of QtQuick.
-#include <FramelessKit/CoreExport.h>
-#include <FramelessKit/QuickExport.h>
+#include <FramelessKit/Export.h>
 #include <QString>
 
 namespace FramelessKit::Internal

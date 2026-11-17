@@ -8,13 +8,17 @@
 include/FramelessKit/    公开初始化、Material、WidgetAgent、WindowAgent
 src/core/               单一运行时、窗口绑定、命中模型、材质状态、平台工厂
 src/widgets/            QWidget 宿主映射与 Agent PIMPL
-src/quick/              QQuickItem 映射、QML 声明收集、Quick 初始化适配
-cmake/                  target 设置、Config 模板、Quick 链接引导
+src/quick/              QQuickItem 映射、QML 声明收集、Quick 初始化适配与链接引导
+cmake/                  target 设置、Config 模板
 example/                两个已接通的架构演示
 tests/                  逻辑与生命周期测试、独立安装消费工程
 ```
 
 `FramelessKit::Widgets` → `FramelessKit::Core`、`Qt6::Widgets`；`FramelessKit::Quick` → `FramelessKit::Core`、`Qt6::Qml`、`Qt6::Quick`。Core 只依赖 Qt Core/Gui。按组件导出 CMake targets，Widgets-only 消费不会额外查找或链接 Quick。
+
+## 导出与链接配置
+
+各库统一包含源码中的 `FramelessKit/Export.h`，不再生成 `CoreExport.h` / `WidgetsExport.h` / `QuickExport.h`。默认动态库：无宏时导入；构建某个 DLL 时，仅向该 target 私有传递对应的 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_WIDGETS` 或 `FRAMELESSKIT_BUILD_QUICK`。静态库及直接源码集成使用 `FRAMELESSKIT_STATIC` 关闭导入/导出修饰。CMake 只负责传递编译宏和安装源码头文件。
 
 ## 内部责任
 
@@ -27,9 +31,9 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 
 ## 统一初始化的链接方式
 
-Core 实现唯一 `initialize(bool)`，不引用 QtQuick。Quick target 向消费者传播一个很小的 `QuickBootstrap.cpp` 源文件，它引用 Quick 的初始化函数并在 main 前登记至 Core。这样静态链接不会裁掉初始化适配，动态库也会在 main 前成为实际依赖；不依赖 QML 插件在加载 engine 后才登记初始化。
+Core 实现唯一 `initialize(bool)`，不引用 QtQuick。Quick 模块将 `src/quick/QuickBootstrap.cpp` 预编译为 OBJECT target，由 Quick target 向消费者传播其目标文件并直接参与链接。该目标文件引用 Quick 的初始化函数并在 main 前登记至 Core。这样静态链接不会裁掉初始化适配，动态库也会在 main 前成为实际依赖；不依赖 QML 插件在加载 engine 后才登记初始化。
 
-此源文件随安装包放入 `lib/cmake/FramelessKit`；它不是应用公共 API，也不要求应用手动包含内部头文件。Quick 默认 Alpha buffer 是唯一已落地的渲染前置准备，不表示透明或材质已经实现。
+安装包不附带实现源码；引导目标文件安装到 `${CMAKE_INSTALL_LIBDIR}/FramelessKit/objects`，由导出的 CMake target 自动引用。它不是应用公共 API，也不要求应用手动包含内部头文件或添加链接选项。Quick 默认 Alpha buffer 是唯一已落地的渲染前置准备，不表示透明或材质已经实现。
 
 ## 生命周期边界
 

@@ -16,7 +16,7 @@
 
 ## 构建（不使用 Presets）
 
-要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。静态/动态使用独立构建和安装目录。
+要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。默认构建动态库（`BUILD_SHARED_LIBS=ON`），静态/动态使用独立构建和安装目录。
 
 ```powershell
 cmake -S . -B build/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64 -DBUILD_SHARED_LIBS=OFF
@@ -45,7 +45,7 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 
 | 参数 | 默认 | 作用 |
 | --- | --- | --- |
-| `BUILD_SHARED_LIBS` | `OFF` | 静态库 / 动态库，独立构建 |
+| `BUILD_SHARED_LIBS` | `ON` | 静态库 / 动态库，独立构建 |
 | `BUILD_WIDGETS` | `ON` | Widgets 适配器与对应示例/测试 |
 | `BUILD_QUICK` | `ON` | Quick 适配器、QML 模块和插件 |
 | `BUILD_EXAMPLES` | `ON` | 两个架构演示 |
@@ -54,6 +54,28 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 
 纯 Widgets：追加 `-DBUILD_QUICK=OFF`。纯 Quick：追加 `-DBUILD_WIDGETS=OFF`。只要 Core：同时关闭两个前端；关闭测试可避免 Qt Test 依赖。Qt Quick Controls 只由 QML 演示使用，不是库的 C++ 链接依赖。
 
+### 统一导出头与编译宏
+
+所有模块共用仓库内的 `include/FramelessKit/Export.h`，不再由 CMake 生成导出头；直接包含源码头文件也不需要先运行 configure。
+
+| 编译方式 | 需要传递的宏 |
+| --- | --- |
+| 使用动态库（默认） | 无；默认将各模块符号标记为导入 |
+| 构建 Core 动态库 | 仅在 Core 编译单元中定义 `FRAMELESSKIT_BUILD_CORE` |
+| 构建 Widgets 动态库 | 仅在 Widgets 编译单元中定义 `FRAMELESSKIT_BUILD_WIDGETS` |
+| 构建 Quick 动态库 | 仅在 Quick 编译单元中定义 `FRAMELESSKIT_BUILD_QUICK` |
+| 构建/使用静态库，或将源码直接编入应用 | 为相关编译单元统一定义 `FRAMELESSKIT_STATIC`，关闭所有导入/导出修饰 |
+
+三个模块仍各用 `FRAMELESSKIT_CORE_EXPORT`、`FRAMELESSKIT_WIDGETS_EXPORT`、`FRAMELESSKIT_QUICK_EXPORT` 标注接口，但定义集中于同一个头文件。不要向动态库消费者传播 `FRAMELESSKIT_BUILD_*`，也不要在编译某一个 DLL 时同时定义三个构建宏。
+
+使用本项目 CMake targets 时，构建宏由各 DLL target 私有传递；静态 target 会公开传递 `FRAMELESSKIT_STATIC`。使用其他构建方式时，由用户按上表传递编译宏。
+
+```cmake
+# 用户工程中直接编译源码 / 链接手动构建的静态库时：
+target_compile_definitions(my_app PRIVATE FRAMELESSKIT_STATIC)
+```
+
+这些宏只决定符号可见性；直接集成源码仍需正常配置 Qt AUTOMOC、QML 注册/插件与 Quick 初始化接入。
 ## 安装后使用
 
 通过 `CMAKE_PREFIX_PATH` 或 `FramelessKit_DIR` 指向安装目录。仅公开头文件会安装；`src/` 中的 Controller、HostAdapter 等内部头文件不会安装。

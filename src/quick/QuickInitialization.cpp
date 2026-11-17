@@ -1,4 +1,4 @@
-#include <FramelessKit/QuickExport.h>
+#include <FramelessKit/Export.h>
 #include <QGuiApplication>
 #include <QQuickWindow>
 

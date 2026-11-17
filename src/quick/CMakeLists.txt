@@ -2,10 +2,24 @@ qt_add_library(fk_quick ${FRAMELESSKIT_LIBRARY_TYPE})
 framelesskit_configure_target(fk_quick Quick)
 target_link_libraries(fk_quick PUBLIC FramelessKit::Core Qt6::Qml Qt6::Quick)
 target_include_directories(fk_quick PRIVATE "${PROJECT_SOURCE_DIR}/include/FramelessKit")
-# The target, rather than a late-loaded QML plugin, wires Quick initialization.
-target_sources(fk_quick INTERFACE
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/cmake/QuickBootstrap.cpp>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit/QuickBootstrap.cpp>
+# Link a precompiled bootstrap directly into consumers, bypassing static archive
+# elimination without distributing implementation sources in the installed package.
+add_library(fk_quick_bootstrap OBJECT QuickBootstrap.cpp)
+add_library(FramelessKit::QuickBootstrap ALIAS fk_quick_bootstrap)
+set_target_properties(fk_quick_bootstrap PROPERTIES
+    EXPORT_NAME QuickBootstrap
+    POSITION_INDEPENDENT_CODE ON
+    AUTOMOC OFF
+    AUTOUIC OFF
+)
+target_compile_features(fk_quick_bootstrap PRIVATE cxx_std_20)
+target_link_libraries(fk_quick_bootstrap PRIVATE FramelessKit::Core)
+target_link_libraries(fk_quick INTERFACE
+    $<TARGET_OBJECTS:FramelessKit::QuickBootstrap>
+)
+install(TARGETS fk_quick_bootstrap
+    EXPORT FramelessKitQuickTargets
+    OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}/FramelessKit/objects"
 )
 qt_add_qml_module(fk_quick
     URI FramelessKit
@@ -38,9 +52,6 @@ install(FILES
     "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/qmldir"
     "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/fk_quick.qmltypes"
     DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
-)
-install(FILES "${PROJECT_SOURCE_DIR}/cmake/QuickBootstrap.cpp"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
 )
 install(FILES "${PROJECT_SOURCE_DIR}/include/FramelessKit/WindowAgent.h"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"

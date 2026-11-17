@@ -2,7 +2,7 @@
 #include "HitTestModel_p.h"
 #include "MaterialController_p.h"
 
-#include <FramelessKit/CoreExport.h>
+#include <FramelessKit/Export.h>
 #include <memory>
 
 namespace FramelessKit::Internal
