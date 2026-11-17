@@ -1,6 +1,7 @@
 
 function(framelesskit_add_test target source)
     qt_add_executable(${target} ${source})
+    set_target_properties(${target} PROPERTIES AUTOMOC ON)
     target_link_libraries(${target} PRIVATE FramelessKit::Core Qt6::Test)
     target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/src/core")
     add_test(NAME ${target} COMMAND ${target})
@@ -9,25 +10,25 @@ endfunction()
 framelesskit_add_test(framelesskit_core_tests CoreTests.cpp)
 framelesskit_add_test(framelesskit_runtime_tests RuntimeTests.cpp)
 
-if(BUILD_WIDGETS)
+if(FRAMELESSKIT_BUILD_WIDGETS)
     framelesskit_add_test(framelesskit_widgets_tests WidgetsTests.cpp)
     target_link_libraries(framelesskit_widgets_tests PRIVATE FramelessKit::Widgets)
 endif()
 
-if(BUILD_QUICK)
+if(FRAMELESSKIT_BUILD_QUICK)
     framelesskit_add_test(framelesskit_quick_tests QuickTests.cpp)
     target_link_libraries(framelesskit_quick_tests PRIVATE FramelessKit::Quick)
 endif()
 
-if(BUILD_EXAMPLES AND BUILD_WIDGETS)
+if(FRAMELESSKIT_BUILD_EXAMPLES AND FRAMELESSKIT_BUILD_WIDGETS)
     add_test(NAME framelesskit_widgets_demo_smoke COMMAND framelesskit_widgets_demo --smoke-test)
 endif()
 
-if(BUILD_EXAMPLES AND BUILD_QUICK)
+if(FRAMELESSKIT_BUILD_EXAMPLES AND FRAMELESSKIT_BUILD_QUICK)
     add_test(NAME framelesskit_qml_demo_smoke COMMAND framelesskit_quick_demo --smoke-test)
 endif()
 
-if(BUILD_WIDGETS OR BUILD_QUICK)
+if(PROJECT_IS_TOP_LEVEL AND FRAMELESSKIT_INSTALL AND (FRAMELESSKIT_BUILD_WIDGETS OR FRAMELESSKIT_BUILD_QUICK))
     add_test(NAME framelesskit_installed_consumer
         COMMAND "${CMAKE_COMMAND}"
             "-DBUILD_DIR=${PROJECT_BINARY_DIR}"
@@ -40,8 +41,8 @@ if(BUILD_WIDGETS OR BUILD_QUICK)
             "-DQT6_DIR=${Qt6_DIR}"
             "-DQT_BIN_DIR=$<TARGET_FILE_DIR:Qt6::Core>"
             "-DINSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
-            "-DWIDGETS=${BUILD_WIDGETS}"
-            "-DQUICK=${BUILD_QUICK}"
+            "-DWIDGETS=${FRAMELESSKIT_BUILD_WIDGETS}"
+            "-DQUICK=${FRAMELESSKIT_BUILD_QUICK}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/RunInstalledConsumer.cmake"
     )
 endif()
@@ -74,7 +75,7 @@ foreach(mode default static core widgets quick)
     endif()
 endforeach()
 
-if(WIN32 AND BUILD_WIDGETS)
+if(WIN32 AND FRAMELESSKIT_BUILD_WIDGETS)
     framelesskit_add_test(framelesskit_widgets_native_tests WidgetsNativeTests.cpp)
     target_link_libraries(framelesskit_widgets_native_tests PRIVATE FramelessKit::Widgets user32)
     set_tests_properties(framelesskit_widgets_native_tests PROPERTIES
@@ -85,7 +86,7 @@ if(WIN32 AND BUILD_WIDGETS)
     )
 endif()
 
-if(WIN32 AND BUILD_QUICK)
+if(WIN32 AND FRAMELESSKIT_BUILD_QUICK)
     framelesskit_add_test(framelesskit_quick_native_tests QuickNativeTests.cpp)
     target_link_libraries(framelesskit_quick_native_tests PRIVATE FramelessKit::Quick user32)
     set_tests_properties(framelesskit_quick_native_tests PROPERTIES

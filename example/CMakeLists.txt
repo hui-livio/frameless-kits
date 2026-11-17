@@ -1,4 +1,4 @@
-if(BUILD_WIDGETS)
+if(FRAMELESSKIT_BUILD_WIDGETS)
     qt_add_executable(framelesskit_widgets_demo WidgetsDemo.cpp)
     target_link_libraries(framelesskit_widgets_demo PRIVATE FramelessKit::Widgets)
     if(MSVC)
@@ -6,10 +6,10 @@ if(BUILD_WIDGETS)
     endif()
 endif()
 
-if(BUILD_QUICK)
+if(FRAMELESSKIT_BUILD_QUICK)
     qt_add_executable(framelesskit_quick_demo QuickMain.cpp)
     target_link_libraries(framelesskit_quick_demo PRIVATE FramelessKit::Quick)
-    if(NOT BUILD_SHARED_LIBS)
+    if(NOT FRAMELESSKIT_BUILD_SHARED_LIBS)
         target_link_libraries(framelesskit_quick_demo PRIVATE FramelessKit::QuickPlugin)
     endif()
     target_compile_definitions(framelesskit_quick_demo PRIVATE

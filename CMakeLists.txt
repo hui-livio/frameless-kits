@@ -8,32 +8,46 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(CMAKE_OBJCXX_EXTENSIONS OFF)
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+if(NOT DEFINED CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 20)
+    set(CMAKE_CXX_STANDARD 20)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(BUILD_SHARED_LIBS "Build FramelessKit shared libraries" ON)
-option(BUILD_WIDGETS "Build the Widgets adapter" ON)
-option(BUILD_QUICK "Build the Quick adapter and QML module" ON)
-option(BUILD_EXAMPLES "Build example applications" ON)
-# Reserved for the subsequent native material implementation; OFF in the scaffold.
-option(ENABLE_LEGACY_ACCENT "Enable the future Windows legacy Accent backend" OFF)
+# Keep legacy command-line switches working for standalone builds only.
+function(framelesskit_option name description default)
+    if(PROJECT_IS_TOP_LEVEL AND DEFINED ${name})
+        set(default "${${name}}")
+    endif()
+    option(FRAMELESSKIT_${name} "${description}" "${default}")
+endfunction()
 
-if(BUILD_SHARED_LIBS)
+set(framelesskit_shared_default ON)
+if(DEFINED BUILD_SHARED_LIBS)
+    set(framelesskit_shared_default "${BUILD_SHARED_LIBS}")
+endif()
+option(FRAMELESSKIT_BUILD_SHARED_LIBS "Build FramelessKit shared libraries" "${framelesskit_shared_default}")
+framelesskit_option(BUILD_WIDGETS "Build the Widgets adapter" ON)
+framelesskit_option(BUILD_QUICK "Build the Quick adapter and QML module" ON)
+framelesskit_option(BUILD_EXAMPLES "Build example applications" "${PROJECT_IS_TOP_LEVEL}")
+framelesskit_option(BUILD_TESTING "Build FramelessKit tests" OFF)
+option(FRAMELESSKIT_INSTALL "Generate FramelessKit install rules" "${PROJECT_IS_TOP_LEVEL}")
+# Reserved for the subsequent native material implementation.
+framelesskit_option(ENABLE_LEGACY_ACCENT "Enable the future Windows legacy Accent backend" OFF)
+
+if(FRAMELESSKIT_BUILD_SHARED_LIBS)
     set(FRAMELESSKIT_LIBRARY_TYPE SHARED)
 else()
     set(FRAMELESSKIT_LIBRARY_TYPE STATIC)
 endif()
 
-include(CTest)
-
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui)
 
-if(BUILD_WIDGETS)
+if(FRAMELESSKIT_BUILD_WIDGETS)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 endif()
 
-if(BUILD_QUICK)
+if(FRAMELESSKIT_BUILD_QUICK)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Qml Quick)
 endif()
 
@@ -41,58 +55,72 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-include(cmake/FramelessKitTargets.cmake)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FramelessKitTargets.cmake")
 
-# A common output root also makes Windows build-tree demos/tests runnable.
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
-set(QT_QML_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/qml")
+# Keep standalone artifacts together; embedded builds honor the host's output paths.
+foreach(kind RUNTIME LIBRARY ARCHIVE)
+    if(PROJECT_IS_TOP_LEVEL OR NOT DEFINED CMAKE_${kind}_OUTPUT_DIRECTORY)
+        if(kind STREQUAL "RUNTIME")
+            set(CMAKE_${kind}_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+        else()
+            set(CMAKE_${kind}_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+        endif()
+    endif()
+endforeach()
+if(NOT DEFINED QT_QML_OUTPUT_DIRECTORY)
+    set(QT_QML_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/qml")
+endif()
 set(FRAMELESSKIT_QML_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
 add_subdirectory(src/core)
 
-if(BUILD_WIDGETS)
+if(FRAMELESSKIT_BUILD_WIDGETS)
     add_subdirectory(src/widgets)
 endif()
 
-if(BUILD_QUICK)
+if(FRAMELESSKIT_BUILD_QUICK)
     add_subdirectory(src/quick)
 endif()
 
-if(BUILD_EXAMPLES)
+if(FRAMELESSKIT_BUILD_EXAMPLES)
     add_subdirectory(example)
 endif()
 
-if(BUILD_TESTING)
+if(FRAMELESSKIT_BUILD_TESTING)
+    if(PROJECT_IS_TOP_LEVEL)
+        include(CTest)
+    endif()
+    enable_testing()
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     add_subdirectory(tests)
 endif()
 
-configure_package_config_file(cmake/FramelessKitConfig.cmake.in
-    "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
-    PATH_VARS FRAMELESSKIT_QML_INSTALL_DIR
-)
+if(FRAMELESSKIT_INSTALL)
+    configure_package_config_file(cmake/FramelessKitConfig.cmake.in
+        "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
+        PATH_VARS FRAMELESSKIT_QML_INSTALL_DIR
+    )
 
-write_basic_package_version_file(
-    "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
-    VERSION "${PROJECT_VERSION}"
-    COMPATIBILITY SameMinorVersion
-)
+    write_basic_package_version_file(
+        "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
+        VERSION "${PROJECT_VERSION}"
+        COMPATIBILITY SameMinorVersion
+    )
 
-install(EXPORT FramelessKitCoreTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
+    install(EXPORT FramelessKitCoreTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
 
-if(BUILD_WIDGETS)
-    install(EXPORT FramelessKitWidgetsTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
+    if(FRAMELESSKIT_BUILD_WIDGETS)
+        install(EXPORT FramelessKitWidgetsTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
+    endif()
+
+    if(FRAMELESSKIT_BUILD_QUICK)
+        install(EXPORT FramelessKitQuickTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
+    endif()
+
+    install(FILES
+        "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
+        "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
+    )
 endif()
-
-if(BUILD_QUICK)
-    install(EXPORT FramelessKitQuickTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
-endif()
-
-install(FILES
-    "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
-    "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
-)

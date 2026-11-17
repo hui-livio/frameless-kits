@@ -1,6 +1,7 @@
 function(framelesskit_configure_target target component)
     add_library(FramelessKit::${component} ALIAS ${target})
     set_target_properties(${target} PROPERTIES
+        AUTOMOC ON
         EXPORT_NAME ${component}
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
@@ -13,7 +14,7 @@ function(framelesskit_configure_target target component)
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     string(TOUPPER "${component}" upper_component)
-    if(BUILD_SHARED_LIBS)
+    if(FRAMELESSKIT_BUILD_SHARED_LIBS)
         target_compile_definitions(${target} PRIVATE FRAMELESSKIT_BUILD_${upper_component})
     else()
         target_compile_definitions(${target} PUBLIC FRAMELESSKIT_STATIC)
@@ -21,10 +22,12 @@ function(framelesskit_configure_target target component)
     if(MSVC)
         target_compile_options(${target} PRIVATE /utf-8 /W4 /permissive-)
     endif()
-    install(TARGETS ${target}
-        EXPORT FramelessKit${component}Targets
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    )
+    if(FRAMELESSKIT_INSTALL)
+        install(TARGETS ${target}
+            EXPORT FramelessKit${component}Targets
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        )
+    endif()
 endfunction()

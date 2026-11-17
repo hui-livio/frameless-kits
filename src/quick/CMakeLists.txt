@@ -14,13 +14,18 @@ set_target_properties(fk_quick_bootstrap PROPERTIES
 )
 target_compile_features(fk_quick_bootstrap PRIVATE cxx_std_20)
 target_link_libraries(fk_quick_bootstrap PRIVATE FramelessKit::Core)
+# Forward the target as well as its objects so selected consumer builds also
+# build the bootstrap (not just builds of the default ALL target).
 target_link_libraries(fk_quick INTERFACE
+    FramelessKit::QuickBootstrap
     $<TARGET_OBJECTS:FramelessKit::QuickBootstrap>
 )
-install(TARGETS fk_quick_bootstrap
-    EXPORT FramelessKitQuickTargets
-    OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}/FramelessKit/objects"
-)
+if(FRAMELESSKIT_INSTALL)
+    install(TARGETS fk_quick_bootstrap
+        EXPORT FramelessKitQuickTargets
+        OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}/FramelessKit/objects"
+    )
+endif()
 qt_add_qml_module(fk_quick
     URI FramelessKit
     VERSION 1.0
@@ -32,7 +37,7 @@ qt_add_qml_module(fk_quick
         QuickInitialization.cpp
 )
 add_library(FramelessKit::QuickPlugin ALIAS fk_quickplugin)
-set_target_properties(fk_quickplugin PROPERTIES EXPORT_NAME QuickPlugin)
+set_target_properties(fk_quickplugin PROPERTIES EXPORT_NAME QuickPlugin AUTOMOC ON)
 # qmldir is configuration-independent; keep its plugin beside it for multi-config builds.
 foreach(config IN LISTS CMAKE_CONFIGURATION_TYPES)
     string(TOUPPER "${config}" upper_config)
@@ -41,18 +46,20 @@ foreach(config IN LISTS CMAKE_CONFIGURATION_TYPES)
         LIBRARY_OUTPUT_DIRECTORY_${upper_config} "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit"
     )
 endforeach()
-install(TARGETS fk_quickplugin ${qml_output_targets}
-    EXPORT FramelessKitQuickTargets
-    RUNTIME DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
-    LIBRARY DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit/objects"
-)
-install(FILES
-    "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/qmldir"
-    "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/fk_quick.qmltypes"
-    DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
-)
-install(FILES "${PROJECT_SOURCE_DIR}/include/FramelessKit/WindowAgent.h"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"
-)
+if(FRAMELESSKIT_INSTALL)
+    install(TARGETS fk_quickplugin ${qml_output_targets}
+        EXPORT FramelessKitQuickTargets
+        RUNTIME DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
+        LIBRARY DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        OBJECTS DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit/objects"
+    )
+    install(FILES
+        "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/qmldir"
+        "${QT_QML_OUTPUT_DIRECTORY}/FramelessKit/fk_quick.qmltypes"
+        DESTINATION "${FRAMELESSKIT_QML_INSTALL_DIR}/FramelessKit"
+    )
+    install(FILES "${PROJECT_SOURCE_DIR}/include/FramelessKit/WindowAgent.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"
+    )
+endif()

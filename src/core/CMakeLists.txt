@@ -19,7 +19,7 @@ if(WIN32)
     target_sources(fk_core PRIVATE WindowsBackend.cpp)
     target_link_libraries(fk_core PRIVATE comctl32 user32 shell32 dwmapi gdi32)
     target_compile_definitions(fk_core PRIVATE
-        FRAMELESSKIT_ENABLE_LEGACY_ACCENT=$<BOOL:${ENABLE_LEGACY_ACCENT}>
+        FRAMELESSKIT_ENABLE_LEGACY_ACCENT=$<BOOL:${FRAMELESSKIT_ENABLE_LEGACY_ACCENT}>
     )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_sources(fk_core PRIVATE CocoaBackend.mm)
@@ -27,9 +27,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(fk_core PRIVATE "-framework AppKit")
 endif()
 
-install(FILES
-    "${PROJECT_SOURCE_DIR}/include/FramelessKit/Export.h"
-    "${PROJECT_SOURCE_DIR}/include/FramelessKit/Initialization.h"
-    "${PROJECT_SOURCE_DIR}/include/FramelessKit/Material.h"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"
-)
+if(FRAMELESSKIT_INSTALL)
+    install(FILES
+        "${PROJECT_SOURCE_DIR}/include/FramelessKit/Export.h"
+        "${PROJECT_SOURCE_DIR}/include/FramelessKit/Initialization.h"
+        "${PROJECT_SOURCE_DIR}/include/FramelessKit/Material.h"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/FramelessKit"
+    )
+endif()
