@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.24)
+project(FramelessKitInstalledConsumer LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CONSUMER_FRONTEND "Widgets" CACHE STRING "Widgets, Quick, or Mixed")
+if(CONSUMER_FRONTEND STREQUAL "Mixed")
+    set(components Widgets Quick)
+elseif(CONSUMER_FRONTEND STREQUAL "Widgets" OR CONSUMER_FRONTEND STREQUAL "Quick")
+    set(components ${CONSUMER_FRONTEND})
+else()
+    message(FATAL_ERROR "Unknown consumer frontend")
+endif()
+find_package(FramelessKit 0.1 CONFIG REQUIRED COMPONENTS ${components})
+add_executable(framelesskit_consumer main.cpp)
+if("Widgets" IN_LIST components)
+    target_link_libraries(framelesskit_consumer PRIVATE FramelessKit::Widgets)
+    target_compile_definitions(framelesskit_consumer PRIVATE CONSUMER_WIDGETS)
+    if(NOT "Quick" IN_LIST components AND TARGET Qt6::Quick)
+        message(FATAL_ERROR "Widgets-only consumption must not discover QtQuick")
+    endif()
+endif()
+if("Quick" IN_LIST components)
+    target_link_libraries(framelesskit_consumer PRIVATE FramelessKit::Quick)
+    target_compile_definitions(framelesskit_consumer PRIVATE
+        CONSUMER_QUICK
+        CONSUMER_QML_IMPORT_PATH="${FramelessKit_QML_IMPORT_PATH}"
+    )
+    get_target_property(quick_type FramelessKit::Quick TYPE)
+    if(quick_type STREQUAL "STATIC_LIBRARY")
+        target_link_libraries(framelesskit_consumer PRIVATE FramelessKit::QuickPlugin)
+    endif()
+endif()
+# The runner reads the exact executable location for any generator/configuration.
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/executable-$<CONFIG>.txt"
+    CONTENT "$<TARGET_FILE:framelesskit_consumer>"
+)

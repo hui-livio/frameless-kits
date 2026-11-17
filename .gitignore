@@ -1,0 +1,7 @@
+/build*/
+/install*/
+/out/
+CMakeUserPresets.json
+*.user
+
+.qmlls.ini

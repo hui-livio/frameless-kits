@@ -1,0 +1,117 @@
+// Architecture demo: native frame and material effects are intentionally deferred.
+
+#include <FramelessKit/Initialization.h>
+#include <FramelessKit/WidgetAgent.h>
+#include <QApplication>
+#include <QComboBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QTimer>
+#include <QToolButton>
+#include <QVBoxLayout>
+#include <QWidget>
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+    FramelessKit::initialize();
+    using FramelessKit::Material;
+
+    QWidget window;
+    window.setWindowTitle(QObject::tr("无边框模块接口演示"));
+    window.resize(960, 600);
+    window.setMinimumSize(760, 420);
+
+    auto* layout = new QVBoxLayout(&window);
+    layout->setContentsMargins(8, 8, 8, 8);
+
+    auto* titleBar = new QWidget(&window);
+    titleBar->setFixedHeight(44);
+    auto* titleLayout = new QHBoxLayout(titleBar);
+    titleLayout->setContentsMargins(8, 0, 8, 0);
+    titleLayout->addWidget(new QLabel(QObject::tr("我的应用"), titleBar));
+    titleLayout->addStretch();
+
+    auto* titleControls  = new QWidget(titleBar);
+    auto* controlsLayout = new QHBoxLayout(titleControls);
+    controlsLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto* search = new QLineEdit(titleControls);
+    search->setPlaceholderText(QObject::tr("搜索"));
+    search->setFixedWidth(180);
+    auto* minimize = new QToolButton(titleControls);
+    minimize->setText(QObject::tr("最小化"));
+    auto* maximize = new QToolButton(titleControls);
+    maximize->setText(QObject::tr("最大化/还原"));
+    auto* close = new QToolButton(titleControls);
+    close->setText(QObject::tr("关闭"));
+
+    controlsLayout->addWidget(search);
+    controlsLayout->addWidget(minimize);
+    controlsLayout->addWidget(maximize);
+    controlsLayout->addWidget(close);
+    titleLayout->addWidget(titleControls);
+    layout->addWidget(titleBar);
+
+    auto* description = new QLabel(QObject::tr("当前展示模块接入与配置架构。\n"
+                                               "原生拖动、缩放、Snap 和材质效果尚未实现。\n"
+                                               "非纯色请求会报告原因并保持纯色。"),
+                                   &window);
+    description->setAlignment(Qt::AlignCenter);
+    description->setWordWrap(true);
+    layout->addWidget(description, 1);
+
+    auto* materialLayout = new QHBoxLayout;
+    materialLayout->addWidget(new QLabel(QObject::tr("背景材质"), &window));
+    auto* materials = new QComboBox(&window);
+    materials->addItem(QObject::tr("纯色"), static_cast<int>(Material::Solid));
+    materials->addItem(QObject::tr("透明"), static_cast<int>(Material::Transparent));
+    materials->addItem(QObject::tr("背景模糊"), static_cast<int>(Material::Blur));
+    materials->addItem(QObject::tr("亚克力"), static_cast<int>(Material::Acrylic));
+    materials->addItem(QObject::tr("云母"), static_cast<int>(Material::Mica));
+    materials->addItem(QObject::tr("云母 Alt"), static_cast<int>(Material::MicaAlt));
+    materials->setCurrentIndex(materials->findData(static_cast<int>(Material::Solid)));
+    materialLayout->addWidget(materials);
+    materialLayout->addStretch();
+    layout->addLayout(materialLayout);
+
+    auto* feedback = new QLabel(QObject::tr("架构阶段：窗口保留系统边框，材质效果暂缓实现。"), &window);
+    feedback->setWordWrap(true);
+    layout->addWidget(feedback);
+
+    // Existing Qt window commands remain owned by the application.
+    QObject::connect(minimize, &QToolButton::clicked, &window, &QWidget::showMinimized);
+    QObject::connect(maximize, &QToolButton::clicked, &window,
+                     [&window]
+                     {
+                         if (window.isMaximized())
+                             window.showNormal();
+                         else
+                             window.showMaximized();
+                     });
+    QObject::connect(close, &QToolButton::clicked, &window, &QWidget::close);
+
+    // FramelessKit integration: one agent, four configuration concepts.
+    auto* frame = new FramelessKit::WidgetAgent(&window);
+
+    // Optional diagnostics; ordinary applications do not have to subscribe.
+    QObject::connect(frame, &FramelessKit::WidgetAgent::errorOccurred, feedback, &QLabel::setText);
+
+    frame->setTitleBar(titleBar);
+    frame->setInteractive(titleControls);
+    frame->setMaximizeButton(maximize);
+    frame->setMaterial(Material::Solid);
+
+    QObject::connect(materials, &QComboBox::activated, &window,
+                     [frame, materials, feedback](int index)
+                     {
+                         feedback->setText(QObject::tr("已请求：%1").arg(materials->itemText(index)));
+                         frame->setMaterial(static_cast<Material>(materials->itemData(index).toInt()));
+                     });
+
+    window.show();
+    if (app.arguments().contains(QStringLiteral("--smoke-test")))
+        QTimer::singleShot(0, &app, &QCoreApplication::quit);
+    return app.exec();
+}
