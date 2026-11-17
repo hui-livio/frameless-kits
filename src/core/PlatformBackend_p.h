@@ -1,7 +1,7 @@
 #pragma once
 #include <FramelessKit/Material.h>
-#include <QObject>
 #include <QCursor>
+#include <QObject>
 #include <QPointer>
 #include <QString>
 #include <functional>
@@ -20,13 +20,24 @@ public:
     ~PlatformBackend() override;
     void start();
     virtual bool applyMaterial(Material material, QString& error);
+    virtual bool materialReady() const;
+    void setMaterialRefresh(std::function<void()> refresh)
+    {
+        m_materialRefresh = std::move(refresh);
+    }
     virtual void resetInput();
     bool inputBlocked() const;
 
 protected:
     bool eventFilter(QObject* object, QEvent* event) override;
-    virtual bool framelessHint() const { return true; }
-    virtual bool clientResizeEnabled() const { return true; }
+    virtual bool framelessHint() const
+    {
+        return true;
+    }
+    virtual bool clientResizeEnabled() const
+    {
+        return true;
+    }
     virtual void showSystemMenu(QPointF position);
     virtual void titleBarDoubleClick();
     virtual void paintNativeFrame() {}
@@ -43,15 +54,21 @@ protected:
     quint64 m_generation = 0;
 
 private:
-    bool m_changedFrameless = false;
+    std::function<void()> m_materialRefresh;
+    bool m_changedFrameless  = false;
     bool m_originalFrameless = false;
     bool m_pending           = false;
     bool m_surfaceDestroying = false;
     bool m_cursorChanged     = false;
     QCursor m_originalCursor;
-    enum class MouseState { Idle, PreparingMove, SystemOperation };
+    enum class MouseState
+    {
+        Idle,
+        PreparingMove,
+        SystemOperation
+    };
     MouseState m_mouseState = MouseState::Idle;
-    bool m_forwardingPaint = false;
+    bool m_forwardingPaint  = false;
 };
 std::unique_ptr<PlatformBackend> createQtFallbackBackend(HostAdapter&, const HitTestModel&,
                                                          PlatformBackend::Diagnostic);

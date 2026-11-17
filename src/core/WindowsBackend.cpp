@@ -1,6 +1,7 @@
 #include "FrameGeometry_p.h"
 #include "HitTestModel_p.h"
 #include "PlatformBackend_p.h"
+#include "WindowsMaterial_p.h"
 
 #include <QGuiApplication>
 #include <QOperatingSystemVersion>
@@ -50,6 +51,17 @@ public:
     {
         releaseNative(true);
     }
+    bool applyMaterial(Material material, QString& error) override
+    {
+        const bool ok = m_material.apply(material, m_host.materialColor(), error);
+        if (m_hwnd)
+            updateDwmFrame();
+        return ok;
+    }
+    bool materialReady() const override
+    {
+        return m_hwnd != nullptr;
+    }
     void resetInput() override
     {
         const bool captured      = m_pressed;
@@ -95,6 +107,8 @@ protected:
         }
         if (!m_hwnd)
             return;
+        if (newBinding)
+            m_material.bind(m_hwnd);
         const auto previous = GetWindowLongPtrW(m_hwnd, GWL_STYLE);
         LONG_PTR desired    = WS_CAPTION | WS_SYSMENU;
         if (!m_host.fullScreen())
@@ -125,6 +139,7 @@ protected:
     void releaseNative(bool restore) override
     {
         resetInput();
+        m_material.release(restore);
         HWND hwnd = m_hwnd;
         m_hwnd    = nullptr;
         ++m_generation;
@@ -174,7 +189,12 @@ private:
         // The side/bottom frame is real non-client area. Windows 10 additionally
         // needs the removed top edge extended into the client for native rendering.
         MARGINS margins{};
-        if (!m_host.fullScreen() && !IsZoomed(m_hwnd) && !isWindows11()) margins.cyTopHeight = 1;
+        if (!m_host.fullScreen() && !IsZoomed(m_hwnd) && !isWindows11())
+            margins.cyTopHeight = 1;
+        // Extend from the left only: negative/full top margins can resurrect the
+        // hidden caption when Windows accent-colored title bars are enabled.
+        if (m_material.extendsFrame())
+            margins.cxLeftWidth = 65536;
         DwmExtendFrameIntoClientArea(m_hwnd, &margins);
     }
     static bool isWindows11()
@@ -394,8 +414,16 @@ private:
             DefSubclassProc(m_hwnd, message, wParam, lParam);
             drawNativeTopBorder();
             return true;
+        case WM_SETTINGCHANGE:
         case WM_DWMCOMPOSITIONCHANGED:
+            m_material.invalidate();
+            scheduleSynchronize();
+            return false;
         case WM_THEMECHANGED:
+            m_material.invalidate();
+            scheduleSynchronize();
+            return false;
+        /* frame-related changes retain normal Qt processing */
         case WM_DWMNCRENDERINGCHANGED:
         case WM_DPICHANGED:
         case WM_STYLECHANGED:
@@ -497,6 +525,7 @@ private:
             return false;
         }
     }
+    WindowsMaterial m_material;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;
     bool m_haveOriginalPolicy = false;
     HWND m_hwnd              = nullptr;

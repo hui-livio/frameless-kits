@@ -18,6 +18,55 @@ class WidgetHostAdapter final : public Internal::HostAdapter
 {
 public:
     explicit WidgetHostAdapter(QWidget* root) : m_root(root) {}
+    ~WidgetHostAdapter() override
+    {
+        setMaterialBackground(false);
+        if (m_root && m_reservedAlpha)
+        {
+            // Qt keeps an existing surface; do not implicitly destroy/recreate it.
+            const bool noBackground = m_root->testAttribute(Qt::WA_NoSystemBackground);
+            m_root->setAttribute(Qt::WA_TranslucentBackground, false);
+            m_root->setAttribute(Qt::WA_NoSystemBackground, noBackground);
+        }
+    }
+    void prepareMaterialSurface() override
+    {
+        if (!m_root || (window() && window()->handle()) || m_root->testAttribute(Qt::WA_TranslucentBackground))
+            return;
+        const bool noBackground = m_root->testAttribute(Qt::WA_NoSystemBackground);
+        m_root->setAttribute(Qt::WA_TranslucentBackground);
+        m_root->setAttribute(Qt::WA_NoSystemBackground, noBackground);
+        m_reservedAlpha = true;
+    }
+    QColor materialColor() const override
+    {
+        return m_root ? m_root->palette().color(m_root->backgroundRole()) : QColor(Qt::white);
+    }
+    void setMaterialBackground(bool enabled) override
+    {
+        if (!m_root || enabled == m_materialBackground)
+            return;
+        if (enabled)
+        {
+            m_originalNoBackground = m_root->testAttribute(Qt::WA_NoSystemBackground);
+            m_originalOpaque       = m_root->testAttribute(Qt::WA_OpaquePaintEvent);
+            m_originalAutoFill     = m_root->autoFillBackground();
+            m_root->setAttribute(Qt::WA_NoSystemBackground);
+            m_root->setAttribute(Qt::WA_OpaquePaintEvent, false);
+            m_root->setAutoFillBackground(false);
+        }
+        else
+        {
+            if (m_root->testAttribute(Qt::WA_NoSystemBackground))
+                m_root->setAttribute(Qt::WA_NoSystemBackground, m_originalNoBackground);
+            if (!m_root->testAttribute(Qt::WA_OpaquePaintEvent))
+                m_root->setAttribute(Qt::WA_OpaquePaintEvent, m_originalOpaque);
+            if (!m_root->autoFillBackground())
+                m_root->setAutoFillBackground(m_originalAutoFill);
+        }
+        m_materialBackground = enabled;
+        m_root->update();
+    }
 
     QObject* host() const override
     {
@@ -150,6 +199,11 @@ public:
 
 private:
     QPointer<QWidget> m_root;
+    bool m_reservedAlpha        = false;
+    bool m_materialBackground   = false;
+    bool m_originalNoBackground = false;
+    bool m_originalOpaque       = false;
+    bool m_originalAutoFill     = false;
 };
 } // namespace
 class WidgetAgent::Private
@@ -214,9 +268,10 @@ Material WidgetAgent::effectiveMaterial() const
 
 void WidgetAgent::setMaterial(Material value)
 {
+    const QPointer<WidgetAgent> guard(this);
     const auto previous = material();
     d->controller.setMaterial(value);
-    if (previous != material())
+    if (guard && previous != material())
         emit materialChanged();
 }
 } // namespace FramelessKit

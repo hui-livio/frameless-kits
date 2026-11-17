@@ -1,4 +1,4 @@
-// Frameless window demo. Window materials are intentionally not implemented.
+// Frameless window demo with native material selection and diagnostics.
 
 import QtQuick
 import QtQuick.Controls
@@ -7,6 +7,8 @@ import FramelessKit
 
 Window {
     id: root
+
+    property int initialMaterial: WindowAgent.Solid
 
     width: 960
     height: 600
@@ -17,12 +19,13 @@ Window {
 
     WindowAgent {
         id: frame
+        objectName: "frame"
 
         window: root
         titleBar: titleBarItem
         interactiveItems: [titleControls]
         maximizeButton: maximizeButtonItem
-        material: WindowAgent.Solid
+        material: root.initialMaterial
 
         onErrorOccurred: function (message) {
             feedback.text = message;
@@ -95,9 +98,7 @@ Window {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
-            text: Qt.platform.os === "osx"
-                ? qsTr("拖动标题栏移动窗口，双击遵循系统设置。\n使用左上角系统按钮控制窗口，边缘可缩放。\n非纯色请求会报告原因并保持纯色。")
-                : qsTr("拖动标题栏移动窗口，双击最大化/还原。\n边缘可缩放，右击标题栏可打开系统菜单。\n非纯色请求会报告原因并保持纯色。")
+            text: Qt.platform.os === "osx" ? qsTr("拖动标题栏移动窗口，双击遵循系统设置。\n使用左上角系统按钮控制窗口，边缘可缩放。\n材质由系统合成；不可用时说明原因并回退纯色。") : qsTr("拖动标题栏移动窗口，双击最大化/还原。\n边缘可缩放，右击标题栏可打开系统菜单。\n材质由系统合成；不可用时说明原因并回退纯色。")
         }
 
         RowLayout {
@@ -113,7 +114,7 @@ Window {
                 Layout.preferredWidth: 180
                 textRole: "text"
                 valueRole: "value"
-                currentIndex: 0
+                currentIndex: root.initialMaterial
                 model: [
                     {
                         text: qsTr("纯色"),
@@ -152,11 +153,16 @@ Window {
         }
 
         Label {
+            Layout.fillWidth: true
+            text: qsTr("请求：%1；实际配置：%2").arg(materials.model[frame.material].text).arg(materials.model[frame.effectiveMaterial].text)
+        }
+
+        Label {
             id: feedback
 
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: qsTr("无边框窗口已启用；窗口材质暂不实现。")
+            text: qsTr("请选择材质；保留系统边框和阴影，不改变内容控件的不透明度。")
         }
     }
 }

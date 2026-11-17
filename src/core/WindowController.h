@@ -37,6 +37,8 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    void refreshMaterial();
+    bool m_applyingMaterial = false;
     void report(const QString& message, bool queued = false);
     std::unique_ptr<HostAdapter> m_host;
     std::unique_ptr<PlatformBackend> m_backend;

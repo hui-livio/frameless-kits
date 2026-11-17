@@ -10,7 +10,7 @@
 | macOS | Cocoa 原生窗口、全尺寸内容区、系统阴影与红黄绿按钮、窗口重建及解绑恢复 | 已接入源码与构建分支，尚未在 Mac 编译或运行 |
 | Linux | Qt 公共 API 的无边框拖动/缩放回退 | 尚无专用阴影实现，X11/Wayland 菜单对齐待完成 |
 
-材质不在本轮实现范围。`material` 保留请求，所有非 `Solid` 请求报告诊断并保持 `effectiveMaterial == Solid`；默认 `Solid` 不接管应用背景。
+材质已接入原生后端及两套示例，支持范围见下文。`material` 保留请求，`effectiveMaterial` 表示已成功配置的材质；不支持、表面不满足条件或系统策略禁用时报告诊断并回退 `Solid`。默认 `Solid` 不接管应用背景。
 
 ## 构建（不使用 Presets）
 
@@ -48,7 +48,7 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 | `FRAMELESSKIT_BUILD_EXAMPLES` | `ON` | `OFF` | 示例应用 |
 | `FRAMELESSKIT_BUILD_TESTING` | `OFF` | `OFF` | 现有测试与 Qt Test 依赖 |
 | `FRAMELESSKIT_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 插件和 CMake 包的安装规则 |
-| `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `OFF` | `OFF` | 预留编译开关，当前不实现 Accent 效果 |
+| `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows 兼容路径：Blur、旧版 Windows 的 Acrylic；可关闭以禁用私有 Accent API |
 
 ¹ 如果父工程或命令行已经设置标准 `BUILD_SHARED_LIBS`，首次配置时以它作为默认值；显式设置 `FRAMELESSKIT_BUILD_SHARED_LIBS` 可独立选择本库类型，不修改父工程的选择。
 
@@ -189,7 +189,30 @@ $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
 .\build\static\bin\Debug\framelesskit_quick_demo.exe
 ```
 
-两个示例都支持 `--smoke-test`，用于创建窗口、接通 API、进入事件循环后自动退出；这只是运行检查，不进行视觉效果验收。
+两个示例都支持 `--material=Solid|Transparent|Blur|Acrylic|Mica|MicaAlt`（不区分大小写）、`--cycle-materials` 和 `--smoke-test`。初始材质在首次显示前设置；自动循环包含不支持请求之后的恢复切换。`--smoke-test` 在短暂运行或完成循环后退出，不进行像素/视觉验收。
+
+```powershell
+.\build\material-shared\bin\Debug\framelesskit_widgets_demo.exe --material=Blur
+.\build\material-shared\bin\Debug\framelesskit_quick_demo.exe --cycle-materials --smoke-test
+```
+
+## 窗口材质
+
+| 请求 | Windows | macOS Cocoa | Linux / Qt 回退 |
+| --- | --- | --- | --- |
+| `Solid` | 保留应用背景，清理本模块的材质 | 恢复宿主背景，移除效果视图 | 保留应用背景 |
+| `Transparent` | DWM alpha 合成，不启用模糊 | 透明 NSWindow | 依赖 alpha 表面及窗口合成器 |
+| `Blur` | legacy Accent，需兼容开关开启 | NSVisualEffectView 原生背景模糊 | 不支持，回退 Solid |
+| `Acrylic` | build 22621+ 优先使用系统 backdrop；旧系统需 legacy Accent，最低 build 17134 | 不支持，回退 Solid | 不支持，回退 Solid |
+| `Mica` / `MicaAlt` | Windows 11 22H2 / build 22621+ 的系统 backdrop | 不支持，回退 Solid | 不支持，回退 Solid |
+
+- 在首次 `show()` 前绑定 Agent；QML 在自己的 Window 内声明 Agent，并在创建窗口前调用 `initialize(true)`。模块预留 alpha 表面，不会为了切换材质隐式销毁/重建已有窗口。已创建的不透明表面会明确诊断并降级。
+- Widgets 仅调整顶层背景相关属性；Quick 仅调整窗口清屏颜色。切回 Solid 或解绑时恢复本模块接管的状态，不改变业务控件的 opacity、不强制更换渲染器/Controls 样式。已有自定义 paintEvent、样式表背景或不透明 QML 面板仍可能遮挡材质。
+- Windows 保留原生 DWM 边框与阴影。现代 backdrop 优先；`FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON` 的兼容分支动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代 Mica / Acrylic / MicaAlt。
+- Windows 合成关闭、远程会话、高对比度或系统透明效果关闭，以及 macOS“减少透明度”，会导致非 Solid 请求降级。主题/调色板、系统策略和原生表面生命周期变化会重新应用所保留的请求。
+- `effectiveMaterial` 表示配置成功，不保证合成器此刻一定显示某种视觉效果。窗口未具备原生表面时请求保持 pending，实际配置暂为 Solid；初始化完成后自动重放。此属性不能替代实机观察。
+
+当前 Windows 10 build 19045 已运行 Widgets / Quick 的原生材质切换循环：动态版可配置 Transparent / Blur / Acrylic；Mica / MicaAlt 按版本要求回退。关闭 legacy Accent 的静态版用于检查对应降级分支。以上只验证 API 和启动/切换，不代表视觉验收；Windows 11、macOS、Linux 的材质观感尚待相应系统实机确认。
 
 ## macOS example 验收
 
@@ -209,5 +232,6 @@ cmake --build build/macos --target framelesskit_widgets_demo framelesskit_quick_
 - 标题栏拖动、窗口边缘缩放，以及最小尺寸约束。
 - 红黄绿按钮的关闭、最小化、恢复、进入/退出全屏；双击标题栏的系统偏好。
 - 隐藏后再次显示、多个窗口分别关闭，以及 QML Agent 换绑窗口后的样式恢复。
+- 切换 Solid / Transparent / Blur，观察原生模糊与阴影、背景恢复，以及开启“减少透明度”后的降级。
 
 当前仅有 Windows 环境的构建验证；上述 Mac 运行效果仍待实机验收。不以 Windows 构建成功代替 Cocoa 分支的编译或运行验证。

@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QPlatformSurfaceEvent>
+#include <QStyleHints>
 #include <QTimer>
 #include <QWindow>
 
@@ -26,10 +27,11 @@ PlatformBackend::~PlatformBackend()
 void PlatformBackend::start()
 {
     m_originalFrameless = m_host.flags().testFlag(Qt::FramelessWindowHint);
-    m_changedFrameless = m_originalFrameless != framelessHint();
+    m_changedFrameless  = m_originalFrameless != framelessHint();
     if (m_changedFrameless)
         m_host.setFrameless(framelessHint());
     qApp->installEventFilter(this);
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] { scheduleSynchronize(); });
     synchronizeNative();
 }
 void PlatformBackend::resetInput()
@@ -50,10 +52,15 @@ void PlatformBackend::titleBarDoubleClick()
 }
 bool PlatformBackend::applyMaterial(Material material, QString& error)
 {
-    if (material == Material::Solid)
+    if (material == Material::Solid || material == Material::Transparent)
         return true;
-    error = QStringLiteral("Window materials are not implemented; using Solid.");
+    error = QStringLiteral("The %1 platform has no native backend for the requested material; using Solid.")
+                .arg(QGuiApplication::platformName());
     return false;
+}
+bool PlatformBackend::materialReady() const
+{
+    return m_host.window() && m_host.window()->handle();
 }
 bool PlatformBackend::inputBlocked() const
 {
@@ -82,13 +89,22 @@ void PlatformBackend::scheduleSynchronize()
                        [this]
                        {
                            m_pending = false;
+                           const QPointer<PlatformBackend> guard(this);
                            if (!m_surfaceDestroying)
                                synchronizeNative();
+                           if (!guard)
+                               return;
+                           const auto refresh = m_materialRefresh;
+                           if (refresh)
+                               refresh();
                        });
 }
 bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
 {
-    if (m_forwardingPaint) return false;
+    if (m_forwardingPaint)
+        return false;
+    if (object == qApp && (event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::ThemeChange))
+        scheduleSynchronize();
     const bool isWindow = object == m_host.window();
     const bool isHost   = object == m_host.host();
     if (isWindow && event->type() == QEvent::PlatformSurface)
@@ -98,14 +114,16 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         if (m_surfaceDestroying)
         {
             ++m_generation;
+            m_host.materialSurfaceDestroyed();
             resetInput();
             releaseNative(false);
         }
         else
             synchronizeNative();
+        scheduleSynchronize();
     }
-    if (nativeHandling() && ((isHost && event->type() == QEvent::UpdateRequest) ||
-                             (isWindow && event->type() == QEvent::Expose)))
+    if (nativeHandling() &&
+        ((isHost && event->type() == QEvent::UpdateRequest) || (isWindow && event->type() == QEvent::Expose)))
     {
         // Let Qt complete its raster update before exposing the native top edge.
         QPointer<PlatformBackend> guard(this);
@@ -127,6 +145,9 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
             m_surfaceDestroying = false;
             scheduleSynchronize();
             break;
+        case QEvent::PaletteChange:
+        case QEvent::ApplicationPaletteChange:
+        case QEvent::ThemeChange:
         case QEvent::WindowStateChange:
         case QEvent::Resize:
         case QEvent::ScreenChangeInternal:
@@ -159,7 +180,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         return false;
     auto* mouse         = static_cast<QMouseEvent*>(event);
     const QPointF point = window->mapFromGlobal(mouse->globalPosition());
-    const auto edges    = resizeEdges(point, window->size(), { 6, 6 }, clientResizeEnabled() && canResizeWidth(m_host), clientResizeEnabled() && canResizeHeight(m_host),
+    const auto edges    = resizeEdges(point, window->size(), { 6, 6 }, clientResizeEnabled() && canResizeWidth(m_host),
+                                      clientResizeEnabled() && canResizeHeight(m_host),
                                       m_host.states().testFlag(Qt::WindowMaximized), false);
     if (event->type() == QEvent::MouseMove && !mouse->buttons())
     {
@@ -171,7 +193,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
                                         ? Qt::SizeBDiagCursor
                                     : edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge) ? Qt::SizeHorCursor
                                                                                                     : Qt::SizeVerCursor;
-            if (!m_cursorChanged) m_originalCursor = window->cursor();
+            if (!m_cursorChanged)
+                m_originalCursor = window->cursor();
             window->setCursor(shape);
             m_cursorChanged = true;
         }
@@ -185,8 +208,9 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::LeftButton)
     {
         const bool handled = m_mouseState != MouseState::Idle;
-        m_mouseState = MouseState::Idle;
-        if (handled) event->accept();
+        m_mouseState       = MouseState::Idle;
+        if (handled)
+            event->accept();
         return handled;
     }
     if (event->type() == QEvent::MouseMove && mouse->buttons().testFlag(Qt::LeftButton))
@@ -215,7 +239,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         event->accept();
         return true;
     }
-    if (m_hitTest.hitTest(m_host, point) != HitRegion::Caption) return false;
+    if (m_hitTest.hitTest(m_host, point) != HitRegion::Caption)
+        return false;
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::RightButton)
     {
         // Wayland needs the serial from this input event; do not queue the request.
@@ -223,7 +248,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         event->accept();
         return true;
     }
-    if (mouse->button() != Qt::LeftButton) return false;
+    if (mouse->button() != Qt::LeftButton)
+        return false;
     if (event->type() == QEvent::MouseButtonDblClick)
     {
         m_mouseState = MouseState::Idle;

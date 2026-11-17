@@ -3,9 +3,11 @@
 
 #include <FramelessKit/WindowAgent.h>
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QHash>
 #include <QHoverEvent>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -19,6 +21,57 @@ class QuickHostAdapter final : public Internal::HostAdapter
 {
 public:
     explicit QuickHostAdapter(QQuickWindow* window) : m_window(window) {}
+    ~QuickHostAdapter() override
+    {
+        setMaterialBackground(false);
+    }
+    bool materialSurfaceAvailable(QString& error) const override
+    {
+        // QQuickWindow::setColor(opaque) may report alphaBufferSize == -1 after
+        // returning to Solid. The surface was nevertheless reserved before creation.
+        if (m_window && m_window->handle() && m_window->format().alphaBufferSize() > 0)
+            m_confirmedAlpha = true;
+        if (m_reservedAlpha && m_confirmedAlpha && m_window && m_window->handle())
+            return true;
+        return HostAdapter::materialSurfaceAvailable(error);
+    }
+    void materialSurfaceDestroyed() override
+    {
+        m_confirmedAlpha = false;
+    }
+    void prepareMaterialSurface() override
+    {
+        if (!m_window)
+            return;
+        m_reservedAlpha = m_window->format().alphaBufferSize() > 0;
+        if (m_window->handle())
+            return;
+        auto format = m_window->requestedFormat();
+        if (format.alphaBufferSize() < 8)
+        {
+            format.setAlphaBufferSize(8);
+            m_window->setFormat(format);
+        }
+        m_reservedAlpha = true;
+    }
+    QColor materialColor() const override
+    {
+        const QColor color = m_background ? m_originalColor : (m_window ? m_window->color() : QColor{});
+        return color.isValid() && color.alpha() > 0 ? color : QGuiApplication::palette().color(QPalette::Window);
+    }
+    void setMaterialBackground(bool enabled) override
+    {
+        if (!m_window || enabled == m_background)
+            return;
+        m_background = enabled;
+        if (enabled)
+        {
+            m_originalColor = m_window->color();
+            m_window->setColor(Qt::transparent);
+        }
+        else if (m_window->color() == QColor(Qt::transparent))
+            m_window->setColor(m_originalColor);
+    }
     QObject* host() const override
     {
         return m_window;
@@ -96,6 +149,10 @@ public:
 
 private:
     QPointer<QQuickWindow> m_window;
+    QColor m_originalColor;
+    bool m_background             = false;
+    bool m_reservedAlpha          = false;
+    mutable bool m_confirmedAlpha = false;
 };
 
 constexpr auto coreMaterial(WindowAgent::Material value)
@@ -336,9 +393,11 @@ void WindowAgent::setMaterial(Material value)
         emit errorOccurred(QStringLiteral("Invalid material value."));
         return;
     }
+    const QPointer<WindowAgent> guard(this);
     d->material = value;
     if (d->controller)
         d->controller->setMaterial(coreMaterial(value));
-    emit materialChanged();
+    if (guard)
+        emit materialChanged();
 }
 } // namespace FramelessKit

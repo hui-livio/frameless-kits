@@ -16,7 +16,7 @@ target_sources(fk_core PRIVATE
 )
 target_link_libraries(fk_core PUBLIC Qt6::Core Qt6::Gui)
 if(WIN32)
-    target_sources(fk_core PRIVATE WindowsBackend.cpp)
+    target_sources(fk_core PRIVATE WindowsBackend.cpp WindowsMaterial.cpp WindowsMaterial_p.h)
     target_link_libraries(fk_core PRIVATE comctl32 user32 shell32 dwmapi gdi32)
     target_compile_definitions(fk_core PRIVATE
         FRAMELESSKIT_ENABLE_LEGACY_ACCENT=$<BOOL:${FRAMELESSKIT_ENABLE_LEGACY_ACCENT}>

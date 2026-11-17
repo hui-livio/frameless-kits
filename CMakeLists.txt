@@ -32,8 +32,8 @@ framelesskit_option(BUILD_QUICK "Build the Quick adapter and QML module" ON)
 framelesskit_option(BUILD_EXAMPLES "Build example applications" "${PROJECT_IS_TOP_LEVEL}")
 framelesskit_option(BUILD_TESTING "Build FramelessKit tests" OFF)
 option(FRAMELESSKIT_INSTALL "Generate FramelessKit install rules" "${PROJECT_IS_TOP_LEVEL}")
-# Reserved for the subsequent native material implementation.
-framelesskit_option(ENABLE_LEGACY_ACCENT "Enable the future Windows legacy Accent backend" OFF)
+# Optional undocumented Windows compatibility path; modern DWM remains the default.
+framelesskit_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur/Acrylic" ON)
 
 if(FRAMELESSKIT_BUILD_SHARED_LIBS)
     set(FRAMELESSKIT_LIBRARY_TYPE SHARED)

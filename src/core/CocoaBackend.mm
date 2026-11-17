@@ -18,7 +18,7 @@ char viewWindowContext;
 // Registered classes live for the process lifetime, just like the loaded module.
 struct NativeClass
 {
-    Class installed = Nil;
+    Class installed            = Nil;
     Class original             = Nil;
     IMP styleMask              = nullptr;
     IMP transparentTitleBar    = nullptr;
@@ -175,6 +175,67 @@ protected:
     {
         return false;
     }
+    bool materialReady() const override
+    {
+        return m_window != nil;
+    }
+    bool applyMaterial(Material material, QString& error) override
+    {
+        if (!m_window)
+            return material == Material::Solid;
+        if (material != Material::Solid && material != Material::Transparent && material != Material::Blur)
+        {
+            error = QStringLiteral("Cocoa supports Solid, Transparent and native Blur; Windows Acrylic/Mica materials "
+                                   "are unavailable. Using Solid.");
+            return false;
+        }
+        if (material != Material::Solid && NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency)
+        {
+            error = QStringLiteral("macOS Reduce Transparency is enabled; using Solid.");
+            return false;
+        }
+        if (material == Material::Solid)
+        {
+            clearMaterial(true);
+            return true;
+        }
+        if (material == Material::Blur && !m_view.superview)
+        {
+            error = QStringLiteral("The Cocoa view has no native background container; using Solid.");
+            return false;
+        }
+        if (!m_materialOwned)
+        {
+            m_originalOpaque     = m_window.opaque;
+            m_originalBackground = m_window.backgroundColor;
+            m_materialOwned      = true;
+        }
+        m_window.opaque          = NO;
+        m_window.backgroundColor = NSColor.clearColor;
+        if (material == Material::Blur)
+        {
+            if (!m_effect)
+            {
+                m_effect                  = [[NSVisualEffectView alloc] initWithFrame:m_view.frame];
+                m_effect.material         = NSVisualEffectMaterialUnderWindowBackground;
+                m_effect.blendingMode     = NSVisualEffectBlendingModeBehindWindow;
+                m_effect.state            = NSVisualEffectStateFollowsWindowActiveState;
+                m_effect.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+            }
+            // A sibling BELOW Qt's native content view, never a child painted over
+            // Qt's controls. Do not replace Qt's NSWindow contentView or delegate.
+            if (m_effect.superview != m_view.superview)
+                [m_view.superview addSubview:m_effect positioned:NSWindowBelow relativeTo:m_view];
+            m_effect.frame = m_view.frame;
+        }
+        else
+        {
+            [m_effect removeFromSuperview];
+            m_effect = nil;
+        }
+        [m_window invalidateShadow];
+        return true;
+    }
     bool clientResizeEnabled() const override
     {
         return false;
@@ -216,7 +277,7 @@ protected:
                 return;
             }
             m_originalWantsLayer = view.wantsLayer;
-            view.wantsLayer = YES;
+            view.wantsLayer      = YES;
             const QPointer<CocoaBackend> guard(this);
             const quint64 generation = m_generation;
             m_observer               = [FKViewWindowObserver new];
@@ -249,6 +310,14 @@ protected:
             m_notifications = [NSMutableArray new];
             const QPointer<CocoaBackend> guard(this);
             const quint64 generation = m_generation;
+            m_accessibilityObserver  = [NSWorkspace.sharedWorkspace.notificationCenter
+                addObserverForName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                            object:nil
+                             queue:nil
+                        usingBlock:^(NSNotification*) {
+                          if (guard && guard->m_generation == generation)
+                              guard->scheduleSynchronize();
+                        }];
             for (NSNotificationName name in @[
                      NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification,
                      NSWindowDidResizeNotification, NSWindowDidBecomeKeyNotification,
@@ -309,8 +378,27 @@ private:
         // AppKit owns the native buttons, resizing, rounding and fullscreen controls.
         // Do not force Resizable: Qt's flags and fixed-size constraints remain authoritative.
     }
+    void clearMaterial(bool restore)
+    {
+        [m_effect removeFromSuperview];
+        m_effect = nil;
+        if (restore && m_materialOwned && m_window)
+        {
+            if (!m_window.opaque)
+                m_window.opaque = m_originalOpaque;
+            if ([m_window.backgroundColor isEqual:NSColor.clearColor])
+                m_window.backgroundColor = m_originalBackground;
+            [m_window invalidateShadow];
+        }
+        m_materialOwned      = false;
+        m_originalBackground = nil;
+    }
     void detachWindow(bool restore)
     {
+        clearMaterial(restore);
+        if (m_accessibilityObserver)
+            [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:m_accessibilityObserver];
+        m_accessibilityObserver = nil;
         for (id token in m_notifications)
             [[NSNotificationCenter defaultCenter] removeObserver:token];
         m_notifications  = nil;
@@ -337,13 +425,18 @@ private:
             window.movableByWindowBackground = m_originalBackgroundMove;
     }
 
+    NSVisualEffectView* __strong m_effect        = nil;
+    NSColor* __strong m_originalBackground       = nil;
+    id __strong m_accessibilityObserver          = nil;
+    BOOL m_originalOpaque                        = YES;
+    bool m_materialOwned                         = false;
     NSView* __strong m_view                      = nil;
     NSWindow* __weak m_window                    = nil;
     FKViewWindowObserver* __strong m_observer    = nil;
     NSMutableArray* __strong m_notifications     = nil;
     Class m_viewClass                            = Nil;
     Class m_windowClass                          = Nil;
-    BOOL m_originalWantsLayer = NO;
+    BOOL m_originalWantsLayer                    = NO;
     bool m_originalFullSize                      = false;
     BOOL m_originalTransparent                   = NO;
     NSWindowTitleVisibility m_originalVisibility = NSWindowTitleVisible;

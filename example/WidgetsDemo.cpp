@@ -1,4 +1,5 @@
-// Frameless window demo. Window materials are intentionally not implemented.
+// Frameless window demo with native material selection and diagnostics.
+#include "DemoOptions.h"
 
 #include <FramelessKit/Initialization.h>
 #include <FramelessKit/WidgetAgent.h>
@@ -67,11 +68,11 @@ int main(int argc, char* argv[])
 #ifdef Q_OS_MACOS
     const QString descriptionText = QObject::tr("拖动标题栏移动窗口，双击遵循系统设置。\n"
                                                 "使用左上角系统按钮控制窗口，边缘可缩放。\n"
-                                                "非纯色请求会报告原因并保持纯色。");
+                                                "材质由系统合成；不可用时说明原因并回退纯色。");
 #else
     const QString descriptionText = QObject::tr("拖动标题栏移动窗口，双击最大化/还原。\n"
                                                 "边缘可缩放，右击标题栏可打开系统菜单。\n"
-                                                "非纯色请求会报告原因并保持纯色。");
+                                                "材质由系统合成；不可用时说明原因并回退纯色。");
 #endif
     auto* description = new QLabel(descriptionText, &window);
     description->setAlignment(Qt::AlignCenter);
@@ -87,12 +88,15 @@ int main(int argc, char* argv[])
     materials->addItem(QObject::tr("亚克力"), static_cast<int>(Material::Acrylic));
     materials->addItem(QObject::tr("云母"), static_cast<int>(Material::Mica));
     materials->addItem(QObject::tr("云母 Alt"), static_cast<int>(Material::MicaAlt));
-    materials->setCurrentIndex(materials->findData(static_cast<int>(Material::Solid)));
+    const Material initialMaterial = demoInitialMaterial(app.arguments());
+    materials->setCurrentIndex(materials->findData(static_cast<int>(initialMaterial)));
     materialLayout->addWidget(materials);
     materialLayout->addStretch();
     layout->addLayout(materialLayout);
 
-    auto* feedback = new QLabel(QObject::tr("无边框窗口已启用；窗口材质暂不实现。"), &window);
+    auto* materialState = new QLabel(&window);
+    layout->addWidget(materialState);
+    auto* feedback = new QLabel(QObject::tr("请选择材质；保留系统边框和阴影，不改变内容控件的不透明度。"), &window);
     feedback->setWordWrap(true);
     layout->addWidget(feedback);
 
@@ -117,7 +121,16 @@ int main(int argc, char* argv[])
     frame->setTitleBar(titleBar);
     frame->setInteractive(titleControls);
     frame->setMaximizeButton(maximize);
-    frame->setMaterial(Material::Solid);
+    const auto updateMaterialState = [frame, materialState, materials]
+    {
+        materialState->setText(QObject::tr("请求：%1；实际配置：%2")
+                                   .arg(materials->itemText(int(frame->material())),
+                                        materials->itemText(int(frame->effectiveMaterial()))));
+    };
+    QObject::connect(frame, &FramelessKit::WidgetAgent::materialChanged, &window, updateMaterialState);
+    QObject::connect(frame, &FramelessKit::WidgetAgent::effectiveMaterialChanged, &window, updateMaterialState);
+    frame->setMaterial(initialMaterial);
+    updateMaterialState();
 
     QObject::connect(materials, &QComboBox::activated, &window,
                      [frame, materials, feedback](int index)
@@ -127,7 +140,6 @@ int main(int argc, char* argv[])
                      });
 
     window.show();
-    if (app.arguments().contains(QStringLiteral("--smoke-test")))
-        QTimer::singleShot(0, &app, &QCoreApplication::quit);
+    runMaterialDemo(frame, app.arguments());
     return app.exec();
 }

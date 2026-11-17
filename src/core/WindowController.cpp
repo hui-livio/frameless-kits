@@ -4,6 +4,7 @@
 
 #include <QHash>
 #include <QLoggingCategory>
+#include <QPointer>
 #include <QTimer>
 
 Q_LOGGING_CATEGORY(fkWindow, "framelesskit.window")
@@ -50,8 +51,10 @@ WindowController::WindowController(std::unique_ptr<HostAdapter> host, bool quick
                 m_bound = false;
                 m_backend.reset();
             });
-    m_bound   = true;
+    m_bound = true;
+    m_host->prepareMaterialSurface();
     m_backend = createPlatformBackend(*m_host, m_hitTest, [this](const QString& error) { report(error, true); });
+    m_backend->setMaterialRefresh([this] { refreshMaterial(); });
 }
 WindowController::~WindowController()
 {
@@ -113,19 +116,37 @@ bool WindowController::setMaximizeButton(QObject* item)
 }
 void WindowController::setMaterial(Material material)
 {
-    if (!checkGuiThread("Agent material configuration") || !m_bound || m_material.requested == material)
+    if (!checkGuiThread("Agent material configuration") || !m_bound)
         return;
     if (int(material) < int(Material::Solid) || int(material) > int(Material::MicaAlt))
     {
         report(QStringLiteral("Invalid material value."));
         return;
     }
-    const auto previous = m_material.applied;
+    m_material.requested = material;
+    refreshMaterial();
+}
+void WindowController::refreshMaterial()
+{
+    if (!m_bound || !m_backend || m_applyingMaterial)
+        return;
+    m_applyingMaterial = true;
+    const QPointer<WindowController> guard(this);
+    const auto previous  = m_material.applied;
+    const auto requested = m_material.requested;
     QString error;
-    if (!m_material.apply(*m_backend, material, error))
-        report(error);
+    const bool ok = m_material.apply(*m_backend, *m_host, error);
+    if (!guard)
+        return;
+    m_applyingMaterial = false;
+    if (!ok)
+        report(error, true);
     else
         m_lastError.clear();
+    // A synchronous host color notification can change the request while applying.
+    // Replay it outside that notification rather than dropping it or recursing.
+    if (requested != m_material.requested)
+        QTimer::singleShot(0, this, [this] { refreshMaterial(); });
     if (previous != m_material.applied)
         emit effectiveMaterialChanged();
 }

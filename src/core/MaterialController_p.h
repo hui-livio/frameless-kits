@@ -1,25 +1,42 @@
 #pragma once
+#include "HostAdapter_p.h"
 #include "PlatformBackend_p.h"
+
 namespace FramelessKit::Internal
 {
-// No QObject needed: notifications and diagnostics are owned by
-// WindowController.
+// Requests survive unavailable/recreated surfaces. Applied means configured,
+// not a guarantee that the compositor currently displays a particular effect.
 class MaterialController
 {
 public:
     Material requested = Material::Solid;
     Material applied   = Material::Solid;
-    bool apply(PlatformBackend& backend, Material material, QString& error)
+    bool pending       = false;
+
+    bool apply(PlatformBackend& backend, HostAdapter& host, QString& error)
     {
-        requested = material;
-        if (backend.applyMaterial(material, error))
+        pending                  = false;
+        const Material candidate = requested;
+        if (candidate != Material::Solid && !backend.materialReady())
         {
-            applied = material;
+            pending = true;
+            applied = Material::Solid;
+            host.setMaterialBackground(false);
+            return true;
+        }
+        if ((candidate == Material::Solid || host.materialSurfaceAvailable(error)) &&
+            backend.applyMaterial(candidate, error))
+        {
+            applied = candidate;
+            host.setMaterialBackground(candidate != Material::Solid);
             return true;
         }
         QString fallbackError;
         backend.applyMaterial(Material::Solid, fallbackError);
         applied = Material::Solid;
+        if (!fallbackError.isEmpty())
+            error += QStringLiteral(" Fallback cleanup: ") + fallbackError;
+        host.setMaterialBackground(false);
         return false;
     }
 };

@@ -1,8 +1,10 @@
 #pragma once
+#include <QColor>
 #include <QEvent>
 #include <QObject>
 #include <QPointF>
 #include <QSize>
+#include <QString>
 #include <QWindow>
 
 namespace FramelessKit::Internal
@@ -49,6 +51,22 @@ public:
         if (window())
             window()->close();
     }
+    // Reserve alpha before first native surface creation; never create a handle.
+    virtual void prepareMaterialSurface() {}
+    virtual void materialSurfaceDestroyed() {}
+    virtual bool materialSurfaceAvailable(QString& error) const
+    {
+        if (window() && window()->format().alphaBufferSize() > 0)
+            return true;
+        error = QStringLiteral("Material requires an alpha surface. Bind the Agent before first show; "
+                               "an existing opaque surface is not recreated implicitly.");
+        return false;
+    }
+    virtual QColor materialColor() const
+    {
+        return QColor(Qt::white);
+    }
+    virtual void setMaterialBackground(bool) {}
     virtual bool supportsMaximizeButton(const QObject*) const
     {
         return false;

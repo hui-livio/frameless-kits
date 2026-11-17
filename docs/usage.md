@@ -1,10 +1,10 @@
-> 当前实现状态：已按“先搭架构，效果暂缓”建立可编译工程。本文保留原接口评审说明；其中拖动、缩放、Snap、透明和材质视觉属于后续目标，尚未实现。实际构建、消费及当前能力请见 [README](../README.md) 与 [架构落地说明](architecture.md)。
+> 当前实现状态：公共 API、Widgets / QML example、Windows / Cocoa 原生后端与材质适配已接入。平台支持和验证边界请见 [README](../README.md) 与 [架构落地说明](architecture.md)；视觉效果以对应系统的 example 实机验收为准。
 
 # FramelessKit 接口使用 Demo
 
 这是一组用于评审公共接口的调用方代码，基于设计稿 v0.5。目标是 Qt 6.8+、C++20、Widgets/QML，以及静态/动态两种库交付。
 
-**FramelessKit 尚未实现，因此这不是可以直接运行的工程。** Initialization.h、WidgetAgent.h、QML WindowAgent、Material 枚举和相关信号均为拟定接口。没有用空实现模拟无边框或材质效果。
+Initialization.h、WidgetAgent.h、QML WindowAgent、Material 枚举和相关信号已实现。示例可直接构建运行；不支持的原生材质明确降级，不用模拟效果冒充系统效果。
 
 ## 文件
 
@@ -12,7 +12,7 @@
 - `Main.qml`：同一界面的 QML 版本，使用标准 Qt Quick Controls 按钮。
 - `QuickMain.cpp`：QML 应用启动入口，在加载 QML 前调用统一初始化。
 
-两种 UI 都是示例；真正要评审的是下方的 Agent 接入部分。QuickMain.cpp 约定后续通过 qt_add_qml_module 将 Main.qml 打包到 URI 为 FramelessDemo 的应用模块中，Main.qml 再导入 FramelessKit 库模块。当前没有创建 CMake 工程或库实现。
+两种 UI 都是示例；真正要评审的是下方的 Agent 接入部分。QuickMain.cpp 通过 qt_add_qml_module 将 Main.qml 打包到 URI 为 FramelessDemo 的应用模块中，Main.qml 再导入 FramelessKit 库模块。
 
 ## main 初始化约定
 
@@ -113,8 +113,8 @@ maximizeButton: maximizeButtonItem
 2. 最大化按钮的正常点击由原有 Qt 逻辑执行一次；模块负责系统命中和事件桥接，不能再触发第二次窗口命令。
 3. 应用先调用 initialize；useQML=true 时由模块准备 Quick 的全局 Alpha 默认值。单窗口背景、系统材质和纯色降级由 Agent 负责。Demo 不直接设置 Alpha 默认值、FramelessWindowHint、WA_TranslucentBackground 或 Window.color。
 4. 使用材质时，应用不要同时绑定/绘制冲突的宿主背景；不透明的业务面板仍会遮挡后面的材质。
-5. 材质下拉框表达请求，不保证所有系统都支持选项。运行时切换若需要不同表面，会按设计降级并报告原因；若要单独验证透明初始表面，应在窗口首次显示前将初始 material 改为 Transparent，并同步示例下拉框的初始选择。
-6. 鼠标拖动、缩放、Snap、材质实际观感，以及静态/动态加载均须等待模块实现后验证。本次只做调用契约和示例结构检查。
+5. 材质下拉框表达请求，不保证所有系统都支持选项。模块在首次创建前预留 alpha；已存在的不透明表面不强制重建，而是降级并报告原因。使用 `--material=Transparent` 可验证初始透明请求；`--cycle-materials --smoke-test` 可快速检查切换与退出。
+6. Windows 原生边框、阴影与基本窗口命令已有 example 验证；材质实际观感、Windows 11 Snap 以及 macOS / Linux 行为仍需相应系统实机验证。编译/启动成功不等于效果验收。
 
 ## 接口评审重点
 

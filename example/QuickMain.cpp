@@ -1,3 +1,5 @@
+#include "DemoOptions.h"
+
 #include <FramelessKit/Initialization.h>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -18,9 +20,13 @@ int main(int argc, char* argv[])
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(EXIT_FAILURE); },
         Qt::QueuedConnection);
+    engine.setInitialProperties({ { QStringLiteral("initialMaterial"), int(demoInitialMaterial(app.arguments())) } });
     engine.loadFromModule("FramelessDemo", "Main");
-    if (app.arguments().contains(QStringLiteral("--smoke-test")))
-        QTimer::singleShot(0, &app,
-                           [&app, &engine] { app.exit(engine.rootObjects().isEmpty() ? EXIT_FAILURE : EXIT_SUCCESS); });
+    if (engine.rootObjects().isEmpty())
+        return EXIT_FAILURE;
+    auto* agent = engine.rootObjects().first()->findChild<QObject*>(QStringLiteral("frame"));
+    if (!agent)
+        return EXIT_FAILURE;
+    runMaterialDemo(agent, app.arguments());
     return app.exec();
 }
