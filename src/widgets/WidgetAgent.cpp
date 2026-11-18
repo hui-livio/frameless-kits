@@ -5,10 +5,15 @@
 #include <QAbstractButton>
 #include <QCoreApplication>
 #include <QEnterEvent>
+#include <QGuiApplication>
 #include <QMouseEvent>
 #include <QPointer>
 #include <QWidget>
 #include <QWindow>
+
+#ifdef Q_OS_MACOS
+#include "CocoaWidgetSafeArea_p.h"
+#endif
 
 namespace FramelessKit
 {
@@ -189,9 +194,14 @@ public:
     {
         if (auto* button = qobject_cast<QAbstractButton*>(object))
         {
+            const QPointer<QAbstractButton> guard(button);
             button->setDown(false);
+            if (!guard)
+                return;
             if (QWidget::mouseGrabber() == button)
                 button->releaseMouse();
+            if (!guard)
+                return;
             QEvent leave(QEvent::Leave);
             QCoreApplication::sendEvent(button, &leave);
         }
@@ -214,6 +224,9 @@ public:
     QPointer<QWidget> titleBar;
     QPointer<QAbstractButton> maximizeButton;
     Internal::WindowController controller;
+#ifdef Q_OS_MACOS
+    std::unique_ptr<Internal::CocoaWidgetSafeArea> safeArea;
+#endif
 };
 
 WidgetAgent::WidgetAgent(QWidget* window) : QObject(window), d(new Private(window))
@@ -221,6 +234,13 @@ WidgetAgent::WidgetAgent(QWidget* window) : QObject(window), d(new Private(windo
     connect(&d->controller, &Internal::WindowController::effectiveMaterialChanged, this,
             &WidgetAgent::effectiveMaterialChanged);
     connect(&d->controller, &Internal::WindowController::errorOccurred, this, &WidgetAgent::errorOccurred);
+#ifdef Q_OS_MACOS
+    if (d->controller.isBound() && QGuiApplication::platformName() == QStringLiteral("cocoa"))
+    {
+        d->safeArea = std::make_unique<Internal::CocoaWidgetSafeArea>(window);
+        d->safeArea->setTitleBar(nullptr);
+    }
+#endif
 }
 
 WidgetAgent::~WidgetAgent() = default;
@@ -236,8 +256,13 @@ QWidget* WidgetAgent::titleBar() const
 
 void WidgetAgent::setTitleBar(QWidget* item)
 {
-    if (d->controller.setTitleBar(item))
-        d->titleBar = item;
+    if (!d->controller.setTitleBar(item))
+        return;
+    d->titleBar = item;
+#ifdef Q_OS_MACOS
+    if (d->safeArea)
+        d->safeArea->setTitleBar(item);
+#endif
 }
 
 void WidgetAgent::setInteractive(QWidget* widget, bool enabled)
@@ -252,7 +277,8 @@ QAbstractButton* WidgetAgent::maximizeButton() const
 
 void WidgetAgent::setMaximizeButton(QAbstractButton* button)
 {
-    if (d->controller.setMaximizeButton(button))
+    const QPointer<WidgetAgent> guard(this);
+    if (d->controller.setMaximizeButton(button) && guard)
         d->maximizeButton = button;
 }
 

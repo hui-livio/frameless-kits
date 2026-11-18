@@ -19,8 +19,7 @@ PlatformBackend::PlatformBackend(HostAdapter& host, const HitTestModel& hitTest,
 PlatformBackend::~PlatformBackend()
 {
     qApp->removeEventFilter(this);
-    if (m_cursorChanged && m_host.window())
-        m_host.window()->setCursor(m_originalCursor);
+    restoreCursor();
     if (m_changedFrameless && m_host.host())
         m_host.setFrameless(m_originalFrameless);
 }
@@ -37,9 +36,65 @@ void PlatformBackend::start()
 void PlatformBackend::resetInput()
 {
     m_mouseState = MouseState::Idle;
-    if (m_cursorChanged && m_host.window())
-        m_host.window()->setCursor(m_originalCursor);
-    m_cursorChanged = false;
+    restoreCursor();
+}
+void PlatformBackend::observeCursorWindow(QWindow* window)
+{
+    if (m_observedCursorWindow == window)
+        return;
+    for (const auto& connection : m_cursorConnections)
+        disconnect(connection);
+    m_observedCursorWindow = window;
+    // QWidget may update constraints without these signals; mouse presses and
+    // releases also recheck them, even when there has been no hover movement.
+    m_cursorConnections    = {
+        connect(window, &QWindow::minimumWidthChanged, this, [this] { restoreCursor(); }),
+        connect(window, &QWindow::minimumHeightChanged, this, [this] { restoreCursor(); }),
+        connect(window, &QWindow::maximumWidthChanged, this, [this] { restoreCursor(); }),
+        connect(window, &QWindow::maximumHeightChanged, this, [this] { restoreCursor(); }),
+        connect(window, &QWindow::windowStateChanged, this, [this] { resetInput(); }),
+    };
+}
+void PlatformBackend::restoreCursor()
+{
+    if (!m_cursorChanged)
+        return;
+    const auto window   = m_cursorWindow;
+    const QCursor saved = m_originalCursor;
+    // CursorChange is synchronous and may reenter or destroy the backend.
+    m_cursorChanged     = false;
+    m_cursorWindow.clear();
+    if (window)
+        window->setCursor(saved);
+}
+bool PlatformBackend::updateCursor(QWindow* window, Qt::Edges edges)
+{
+    const QPointer<PlatformBackend> guard(this);
+    const QPointer<QWindow> target(window);
+    if (!edges || (m_cursorChanged && m_cursorWindow != window))
+    {
+        restoreCursor();
+        if (!guard || !target || m_host.window() != target)
+            return false;
+        if (!edges)
+            return true;
+    }
+    observeCursorWindow(window);
+    const bool horizontal = edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge);
+    const bool vertical   = edges.testFlag(Qt::TopEdge) || edges.testFlag(Qt::BottomEdge);
+    Qt::CursorShape shape = horizontal ? Qt::SizeHorCursor : Qt::SizeVerCursor;
+    if (horizontal && vertical)
+        shape = edges == (Qt::LeftEdge | Qt::TopEdge) || edges == (Qt::RightEdge | Qt::BottomEdge)
+                    ? Qt::SizeFDiagCursor
+                    : Qt::SizeBDiagCursor;
+    if (!m_cursorChanged)
+    {
+        m_originalCursor = window->cursor();
+        m_cursorWindow   = window;
+        m_cursorChanged  = true;
+    }
+    window->setCursor(shape);
+    return guard && target && m_host.window() == target;
 }
 void PlatformBackend::showSystemMenu(QPointF)
 {
@@ -103,6 +158,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
 {
     if (m_forwardingPaint)
         return false;
+    const QPointer<PlatformBackend> guard(this);
+    const QPointer<QObject> receiver(object);
     if (object == qApp && (event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::ThemeChange))
         scheduleSynchronize();
     const bool isWindow = object == m_host.window();
@@ -116,24 +173,28 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
             ++m_generation;
             m_host.materialSurfaceDestroyed();
             resetInput();
+            if (!guard || !receiver)
+                return true;
             releaseNative(false);
         }
         else
             synchronizeNative();
+        if (!guard || !receiver)
+            return true;
         scheduleSynchronize();
     }
     if (nativeHandling() &&
         ((isHost && event->type() == QEvent::UpdateRequest) || (isWindow && event->type() == QEvent::Expose)))
     {
         // Let Qt complete its raster update before exposing the native top edge.
-        QPointer<PlatformBackend> guard(this);
         m_forwardingPaint = true;
         QCoreApplication::sendEvent(object, event);
-        if (guard)
-        {
-            m_forwardingPaint = false;
-            paintNativeFrame();
-        }
+        if (!guard)
+            return true;
+        m_forwardingPaint = false;
+        if (!receiver)
+            return true;
+        paintNativeFrame();
         return true;
     }
     if (isWindow || isHost)
@@ -141,6 +202,10 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         switch (event->type())
         {
         case QEvent::WinIdChange:
+            resetInput();
+            if (!guard || !receiver)
+                return true;
+            [[fallthrough]];
         case QEvent::Show:
             m_surfaceDestroying = false;
             scheduleSynchronize();
@@ -148,15 +213,22 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         case QEvent::PaletteChange:
         case QEvent::ApplicationPaletteChange:
         case QEvent::ThemeChange:
-        case QEvent::WindowStateChange:
         case QEvent::Resize:
         case QEvent::ScreenChangeInternal:
+            scheduleSynchronize();
+            break;
+        case QEvent::WindowStateChange:
+            resetInput();
+            if (!guard || !receiver)
+                return true;
             scheduleSynchronize();
             break;
         case QEvent::Hide:
         case QEvent::WindowDeactivate:
         case QEvent::UngrabMouse:
             resetInput();
+            if (!guard || !receiver)
+                return true;
             break;
         default:
             break;
@@ -164,61 +236,65 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     }
     if (nativeHandling() || (!isWindow && !isHost && !m_host.owns(object)))
         return false;
-    QWindow* window = m_host.window();
+    const QPointer<QWindow> window = m_host.window();
     if (!window || inputBlocked() || m_host.fullScreen())
     {
         resetInput();
-        return false;
+        return !guard || !receiver;
     }
     if (event->type() == QEvent::Leave && m_cursorChanged)
     {
-        window->setCursor(m_originalCursor);
-        m_cursorChanged = false;
+        restoreCursor();
+        if (!guard || !receiver || !window)
+            return true;
     }
     if (event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonDblClick &&
         event->type() != QEvent::MouseMove && event->type() != QEvent::MouseButtonRelease)
         return false;
-    auto* mouse         = static_cast<QMouseEvent*>(event);
-    const QPointF point = window->mapFromGlobal(mouse->globalPosition());
-    const auto edges    = resizeEdges(point, window->size(), { 6, 6 }, clientResizeEnabled() && canResizeWidth(m_host),
-                                      clientResizeEnabled() && canResizeHeight(m_host),
-                                      m_host.states().testFlag(Qt::WindowMaximized), false);
+    auto* mouse             = static_cast<QMouseEvent*>(event);
+    const QPointF point     = window->mapFromGlobal(mouse->globalPosition());
+    const auto currentEdges = [&]
+    {
+        return resizeEdges(point, window->size(), { 6, 6 }, clientResizeEnabled() && canResizeWidth(m_host),
+                           clientResizeEnabled() && canResizeHeight(m_host),
+                           m_host.states().testFlag(Qt::WindowMaximized), m_host.fullScreen());
+    };
+    auto edges = currentEdges();
     if (event->type() == QEvent::MouseMove && !mouse->buttons())
     {
-        if (edges)
-        {
-            Qt::CursorShape shape = edges == (Qt::LeftEdge | Qt::TopEdge) || edges == (Qt::RightEdge | Qt::BottomEdge)
-                                        ? Qt::SizeFDiagCursor
-                                    : edges == (Qt::RightEdge | Qt::TopEdge) || edges == (Qt::LeftEdge | Qt::BottomEdge)
-                                        ? Qt::SizeBDiagCursor
-                                    : edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge) ? Qt::SizeHorCursor
-                                                                                                    : Qt::SizeVerCursor;
-            if (!m_cursorChanged)
-                m_originalCursor = window->cursor();
-            window->setCursor(shape);
-            m_cursorChanged = true;
-        }
-        else if (m_cursorChanged)
-        {
-            window->setCursor(m_originalCursor);
-            m_cursorChanged = false;
-        }
-        return false;
+        return !updateCursor(window, edges) || !receiver;
     }
     if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::LeftButton)
     {
         const bool handled = m_mouseState != MouseState::Idle;
         m_mouseState       = MouseState::Idle;
+        if (!updateCursor(window, edges) || !receiver)
+            return true;
         if (handled)
             event->accept();
         return handled;
+    }
+    if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton)
+    {
+        if (!updateCursor(window, edges) || !receiver)
+            return true;
+        // A CursorChange handler may have changed constraints or window state.
+        if (inputBlocked() || m_host.fullScreen())
+        {
+            resetInput();
+            return !guard || !receiver;
+        }
+        edges = currentEdges();
     }
     if (event->type() == QEvent::MouseMove && mouse->buttons().testFlag(Qt::LeftButton))
     {
         if (m_mouseState == MouseState::PreparingMove)
         {
-            m_mouseState = MouseState::SystemOperation;
-            if (!window->startSystemMove())
+            m_mouseState       = MouseState::SystemOperation;
+            const bool started = window->startSystemMove();
+            if (!guard || !receiver || !window)
+                return true;
+            if (!started)
             {
                 m_mouseState = MouseState::Idle;
                 m_diagnostic(QStringLiteral("System move is not supported by this platform."));
@@ -230,8 +306,11 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     }
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton && edges)
     {
-        m_mouseState = MouseState::SystemOperation;
-        if (!window->startSystemResize(edges))
+        m_mouseState       = MouseState::SystemOperation;
+        const bool started = window->startSystemResize(edges);
+        if (!guard || !receiver || !window)
+            return true;
+        if (!started)
         {
             m_mouseState = MouseState::Idle;
             m_diagnostic(QStringLiteral("System resize is not supported by this platform."));
@@ -239,7 +318,11 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         event->accept();
         return true;
     }
-    if (m_hitTest.hitTest(m_host, point) != HitRegion::Caption)
+    const auto region = m_hitTest.hitTest(m_host, point);
+    // Quick containment masks may execute application code during hit testing.
+    if (!guard || !receiver || !window)
+        return true;
+    if (region != HitRegion::Caption)
         return false;
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::RightButton)
     {

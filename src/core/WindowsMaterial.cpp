@@ -10,10 +10,51 @@ namespace
 {
 // Numeric SDK values keep builds working with pre-Windows-11 SDK headers.
 constexpr DWORD systemBackdropAttribute = 38;
-constexpr DWORD immersiveDarkAttribute  = 20;
 int windowsBuild()
 {
     return QOperatingSystemVersion::current().microVersion();
+}
+DWORD immersiveDarkAttribute()
+{
+    return windowsBuild() >= 19041 ? 20 : 19;
+}
+HRESULT setDarkAppearance(HWND window, BOOL dark)
+{
+    if (windowsBuild() < 17763)
+        return E_NOTIMPL;
+    // qwindowkit's dark-mode path also opts the process into native theme
+    // support and flushes menu themes. DWMWA_USE_IMMERSIVE_DARK_MODE alone
+    // can leave the first native popup/frame using cached light colors.
+    static const HMODULE theme = LoadLibraryExW(L"uxtheme.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (theme)
+    {
+        if (windowsBuild() >= 18362)
+        {
+            using SetPreferredAppMode = int(WINAPI*)(int);
+            static const auto setPreferredAppMode = reinterpret_cast<SetPreferredAppMode>(
+                GetProcAddress(theme, MAKEINTRESOURCEA(135)));
+            if (setPreferredAppMode)
+                setPreferredAppMode(1); // PAM_AUTO: support the system theme, never force all Qt controls dark.
+        }
+        else
+        {
+            using AllowDarkModeForApp = BOOL(WINAPI*)(BOOL);
+            static const auto allowDarkModeForApp = reinterpret_cast<AllowDarkModeForApp>(
+                GetProcAddress(theme, MAKEINTRESOURCEA(135)));
+            if (allowDarkModeForApp)
+                allowDarkModeForApp(TRUE);
+        }
+    }
+    const HRESULT hr = DwmSetWindowAttribute(window, immersiveDarkAttribute(), &dark, sizeof(dark));
+    if (theme)
+    {
+        using FlushMenuThemes = void(WINAPI*)();
+        static const auto flushMenuThemes = reinterpret_cast<FlushMenuThemes>(
+            GetProcAddress(theme, MAKEINTRESOURCEA(136)));
+        if (flushMenuThemes)
+            flushMenuThemes();
+    }
+    return hr;
 }
 QString failure(const char* operation, HRESULT result)
 {
@@ -59,8 +100,15 @@ void WindowsMaterial::bind(HWND window)
     m_haveBackdrop = SUCCEEDED(
         DwmGetWindowAttribute(window, systemBackdropAttribute, &m_originalBackdrop, sizeof(m_originalBackdrop)));
     m_haveDark =
-        SUCCEEDED(DwmGetWindowAttribute(window, immersiveDarkAttribute, &m_originalDark, sizeof(m_originalDark)));
+        SUCCEEDED(DwmGetWindowAttribute(window, immersiveDarkAttribute(), &m_originalDark, sizeof(m_originalDark)));
     m_valid = false;
+    // Match Windows10BorderHandler::setupNecessaryAttributes(): prepare the
+    // native border at HWND binding, before the first show/material/popup.
+    if (m_haveDark && SUCCEEDED(setDarkAppearance(window, TRUE)))
+    {
+        m_darkChanged = true;
+        m_lastDark    = TRUE;
+    }
 }
 bool WindowsMaterial::clear(QString& error)
 {
@@ -114,7 +162,7 @@ bool WindowsMaterial::restoreDark(QString& error)
     if (!m_darkChanged || !m_haveDark)
         return true;
     BOOL currentDark = FALSE;
-    if (FAILED(DwmGetWindowAttribute(m_window, immersiveDarkAttribute, &currentDark, sizeof(currentDark))))
+    if (FAILED(DwmGetWindowAttribute(m_window, immersiveDarkAttribute(), &currentDark, sizeof(currentDark))))
     {
         error = QStringLiteral("Cannot query the owned DWM dark appearance for restoration.");
         return false;
@@ -123,7 +171,7 @@ bool WindowsMaterial::restoreDark(QString& error)
     if (currentDark == m_lastDark)
     {
         const HRESULT hr =
-            DwmSetWindowAttribute(m_window, immersiveDarkAttribute, &m_originalDark, sizeof(m_originalDark));
+            DwmSetWindowAttribute(m_window, immersiveDarkAttribute(), &m_originalDark, sizeof(m_originalDark));
         if (FAILED(hr))
         {
             error = failure("DwmSetWindowAttribute(restore dark appearance)", hr);
@@ -182,19 +230,16 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
         return true;
     if (!clear(error))
         return false;
-    if (material == Material::Solid)
+    // Solid, Transparent and Blur share qwindowkit's dark native border.
+    // Modern backdrops still follow the host color to preserve light Mica/Acrylic.
+    const BOOL dark = !usesSystemBackdrop(material) || color.lightnessF() < 0.5;
+    if (m_haveDark && SUCCEEDED(setDarkAppearance(m_window, dark)))
     {
-        if (!restoreDark(error))
-            return false;
+        m_darkChanged = true;
+        m_lastDark    = dark;
     }
-    else
+    if (material != Material::Solid)
     {
-        const BOOL dark = color.lightnessF() < 0.5;
-        if (m_haveDark && SUCCEEDED(DwmSetWindowAttribute(m_window, immersiveDarkAttribute, &dark, sizeof(dark))))
-        {
-            m_darkChanged = true;
-            m_lastDark    = dark;
-        }
         if (material == Material::Mica || material == Material::MicaAlt || material == Material::Acrylic)
         {
             if (windowsBuild() < 22621)

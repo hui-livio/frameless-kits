@@ -3,6 +3,7 @@
 #include "PlatformBackend_p.h"
 #include "WindowsMaterial_p.h"
 
+#include <QAbstractNativeEventFilter>
 #include <QGuiApplication>
 #include <QOperatingSystemVersion>
 #include <QPointer>
@@ -43,12 +44,19 @@ int edgeHit(Qt::Edges edges)
         return HTBOTTOM;
     return HTCLIENT;
 }
-class WindowsBackend final : public PlatformBackend
+class WindowsBackend final : public PlatformBackend, public QAbstractNativeEventFilter
 {
 public:
     using PlatformBackend::PlatformBackend;
     ~WindowsBackend() override
     {
+        m_destroying = true;
+        if (qApp)
+        {
+            qApp->removeEventFilter(this);
+            if (m_nativeFilterInstalled)
+                qApp->removeNativeEventFilter(this);
+        }
         releaseNative(true);
     }
     bool applyMaterial(Material material, QString& error) override
@@ -64,7 +72,9 @@ public:
             return false;
         if (!ok)
             synchronizeNative(m_material.applied());
-        if (guard && ok)
+        if (!guard)
+            return false;
+        if (ok)
             scheduleMaterialSurfaceRefresh();
         return ok;
     }
@@ -72,19 +82,39 @@ public:
     {
         return m_hwnd != nullptr;
     }
+    bool nativeEventFilter(const QByteArray&, void* message, qintptr* result) override
+    {
+        const auto* msg = static_cast<const MSG*>(message);
+        if (!m_hwnd || msg->hwnd != m_hwnd || msg->message != WM_NCCALCSIZE)
+            return false;
+        // Our Qt 6.8+ baseline captures the original RECT before native filters and
+        // derives its margins from the final RECT afterwards. Adjust here, not
+        // after DefSubclassProc has returned with already-cached title margins.
+        LRESULT nativeResult = 0;
+        const bool handled = process(msg->message, msg->wParam, msg->lParam, nativeResult);
+        *result = nativeResult;
+        return handled;
+    }
     void resetInput() override
     {
+        const QPointer<WindowsBackend> guard(this);
         const bool captured      = m_pressed;
         m_pressed                = false;
         QPointer<QObject> button = m_button;
         m_button.clear();
         if (captured && m_hwnd && GetCapture() == m_hwnd)
             ReleaseCapture();
-        if (button)
+        if (guard && button)
             m_host.cancelButton(button);
     }
 
 protected:
+    void paintNativeFrame() override
+    {
+        // qwindowkit draws after Qt's raster flush, not after WM_PAINT returns.
+        if (m_host.host() && m_host.host()->isWidgetType())
+            drawNativeTopBorder();
+    }
     bool framelessHint() const override { return false; }
     bool nativeHandling() const override
     {
@@ -96,14 +126,24 @@ protected:
     }
     void synchronizeNative(Material material)
     {
+        if (m_destroying)
+            return;
+        const QPointer<WindowsBackend> guard(this);
         auto* window    = m_host.window();
         // handle() is a non-creating public query. winId() is only safe after it succeeds.
         HWND hwnd    = window && window->handle() ? reinterpret_cast<HWND>(window->winId()) : nullptr;
         bool newBinding = false;
         if (m_hwnd != hwnd)
         {
+            const quint64 beforeRelease = m_generation;
             releaseNative(true);
-            if (!hwnd)
+            if (!guard || !hwnd)
+                return;
+            // A cancellation/style callback may already have installed a new
+            // binding. Do not overwrite it with the pre-callback handle.
+            window = m_host.window();
+            if (m_hwnd || m_generation != beforeRelease + 1 || !window || !window->handle() ||
+                reinterpret_cast<HWND>(window->winId()) != hwnd)
                 return;
             m_hwnd = hwnd;
             ++m_generation;
@@ -121,14 +161,21 @@ protected:
         }
         if (!m_hwnd)
             return;
+        if (!m_nativeFilterInstalled)
+        {
+            qApp->installNativeEventFilter(this);
+            m_nativeFilterInstalled = true;
+        }
+        const quint64 generation = m_generation;
+        const auto alive = [&] { return guard && guard->m_hwnd == hwnd && guard->m_generation == generation; };
         if (newBinding)
             m_material.bind(m_hwnd);
+        if (!alive())
+            return;
         const auto previous = GetWindowLongPtrW(m_hwnd, GWL_STYLE);
-        // Transparent system backdrops otherwise expose native caption glyphs.
+        // Match qwindowkit: suppress native caption glyphs for every material.
         // Our registered Qt buttons and explicit system menu remain authoritative.
         LONG_PTR desired    = WS_CAPTION;
-        if (!WindowsMaterial::usesSystemBackdrop(material))
-            desired |= WS_SYSMENU;
         if (!m_host.fullScreen())
         {
             // Fixed-size windows still need a thick frame for the native DWM border/shadow.
@@ -148,39 +195,68 @@ protected:
             const bool preserveClient = !state && !IsIconic(m_hwnd) && !IsZoomed(m_hwnd);
             m_lastState = state;
             SetWindowLongPtrW(m_hwnd, GWL_STYLE, m_appliedStyle);
+            if (!alive())
+                return;
             SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            if (!alive())
+                return;
             if (preserveClient) preserveClientGeometry(clientBefore, originBefore);
         }
+        if (!alive())
+            return;
         updateDwmFrame(material);
     }
     void releaseNative(bool restore) override
     {
-        resetInput();
-        m_material.release(restore);
+        const QPointer<WindowsBackend> guard(this);
+        const HWND hwnd = m_hwnd;
+        const auto originalPolicy = m_originalPolicy;
+        const bool haveOriginalPolicy = m_haveOriginalPolicy;
+        const LONG_PTR originalStyle = m_originalStyle;
+        const LONG_PTR appliedStyle = m_appliedStyle;
+        WindowsMaterial material = m_material;
+        m_material = {};
         m_materialSurfaceRefreshed      = false;
         m_materialSurfaceRefreshPending = false;
-        HWND hwnd                       = m_hwnd;
         m_hwnd                          = nullptr;
-        ++m_generation;
+        const quint64 generation = ++m_generation;
+        // Detach before callbacks. A nested synchronization can then create a
+        // fresh binding without recursing into cleanup of this same binding.
+        const bool captured = m_pressed;
+        QPointer<QObject> button = m_button;
+        m_pressed = false;
+        m_button.clear();
+        if (hwnd && IsWindow(hwnd))
+            RemoveWindowSubclass(hwnd, subclassProc, subclassId);
+        material.release(restore);
+        if (captured && hwnd && GetCapture() == hwnd)
+            ReleaseCapture();
+        if (guard && button)
+            m_host.cancelButton(button);
+        if (!guard || m_generation != generation || m_hwnd)
+            return;
         if (!hwnd || !IsWindow(hwnd))
             return;
         RECT clientBefore{}; GetClientRect(hwnd, &clientBefore);
         POINT originBefore{}; ClientToScreen(hwnd, &originBefore);
-        RemoveWindowSubclass(hwnd, subclassProc, subclassId);
         if (restore)
         {
             DWMNCRENDERINGPOLICY currentPolicy{};
-            if (m_haveOriginalPolicy && SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
+            if (haveOriginalPolicy && SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
                     &currentPolicy, sizeof(currentPolicy))) && currentPolicy == DWMNCRP_ENABLED)
-                DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &m_originalPolicy, sizeof(m_originalPolicy));
+                DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &originalPolicy, sizeof(originalPolicy));
             MARGINS margins{}; DwmExtendFrameIntoClientArea(hwnd, &margins);
             const auto current = GetWindowLongPtrW(hwnd, GWL_STYLE);
             // Restore only bits we actually changed and which still match our last write.
-            const auto owned   = (m_originalStyle ^ m_appliedStyle) & frameStyleMask & ~(current ^ m_appliedStyle);
-            SetWindowLongPtrW(hwnd, GWL_STYLE, (current & ~owned) | (m_originalStyle & owned));
+            const auto owned   = (originalStyle ^ appliedStyle) & frameStyleMask & ~(current ^ appliedStyle);
+            SetWindowLongPtrW(hwnd, GWL_STYLE, (current & ~owned) | (originalStyle & owned));
+            if (!guard || m_generation != generation || m_hwnd || !IsWindow(hwnd))
+                return;
             SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            if (!guard || m_generation != generation || m_hwnd || !IsWindow(hwnd))
+                return;
             if (!m_host.states() && !IsIconic(hwnd) && !IsZoomed(hwnd))
                 preserveClientGeometry(clientBefore, originBefore, hwnd);
         }
@@ -206,10 +282,11 @@ private:
         if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition) return;
         const DWMNCRENDERINGPOLICY policy = DWMNCRP_ENABLED;
         DwmSetWindowAttribute(m_hwnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
-        // The side/bottom frame is real non-client area. Windows 10 additionally
-        // needs the removed top edge extended into the client for native rendering.
+        // Like qwindowkit's ordinary margins, keep the Win10 top edge extended.
+        // Both of our hosts reserve alpha even for Solid; extending the whole
+        // inactive caption exposes a dark caption band on these alpha surfaces.
         MARGINS margins{};
-        if (material != Material::Blur && !WindowsMaterial::usesSystemBackdrop(material) && !m_host.fullScreen() &&
+        if (!WindowsMaterial::usesSystemBackdrop(material) && !m_host.fullScreen() &&
             !IsZoomed(m_hwnd) && !isWindows11())
             margins.cyTopHeight = 1;
         // Extend from the left only: negative/full top margins can resurrect the
@@ -284,9 +361,16 @@ private:
             self->releaseNative(false);
             return DefSubclassProc(hwnd, message, wParam, lParam);
         }
+        if (message == WM_NCCALCSIZE)
+            return DefSubclassProc(hwnd, message, wParam, lParam);
         LRESULT result = 0;
-        // A forwarded Qt button event can destroy the Agent. Never access self afterwards.
+        const QPointer<QWindow> window(self->m_host.window());
+        // Synchronous Qt/native callbacks can destroy the Agent or replace its HWND.
         if (self->process(message, wParam, lParam, result))
+            return result;
+        // Agent deletion does not imply window deletion: Qt must still receive
+        // focus/activation messages for a surviving, now unbound native window.
+        if (!window || !window->handle() || reinterpret_cast<HWND>(window->winId()) != hwnd || !IsWindow(hwnd))
             return result;
         return DefSubclassProc(hwnd, message, wParam, lParam);
     }
@@ -374,7 +458,9 @@ private:
     }
     void systemMenu(POINT point)
     {
-        HMENU menu = GetSystemMenu(m_hwnd, FALSE);
+        const HWND hwnd = m_hwnd;
+        const quint64 generation = m_generation;
+        HMENU menu = GetSystemMenu(hwnd, FALSE);
         if (!menu)
             return;
         const bool maximized = IsZoomed(m_hwnd);
@@ -387,9 +473,9 @@ private:
         enable(SC_MAXIMIZE, !maximized && canMaximize(m_host));
         enable(SC_CLOSE, windowCapability(m_host, Qt::WindowCloseButtonHint));
         QPointer<WindowsBackend> guard(this);
-        const UINT command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, m_hwnd, nullptr);
-        if (guard && command)
-            PostMessageW(m_hwnd, WM_SYSCOMMAND, command, 0);
+        const UINT command = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, hwnd, nullptr);
+        if (guard && guard->m_hwnd == hwnd && guard->m_generation == generation && command)
+            PostMessageW(hwnd, WM_SYSCOMMAND, command, 0);
     }
     void trackHover(POINT screen)
     {
@@ -403,6 +489,8 @@ private:
             m_button = target;
             if (target)
                 m_host.buttonEvent(target, QEvent::Enter, logicalPoint(screen), Qt::NoButton, {});
+            if (!guard)
+                return;
         }
         if (m_button)
         {
@@ -419,14 +507,12 @@ private:
         {
             RECT requested =
                 wParam ? reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam)->rgrc[0] : *reinterpret_cast<RECT*>(lParam);
-            // Qt must see the message first to update its own frame/margin bookkeeping.
-            DefSubclassProc(m_hwnd, message, wParam, lParam);
             RECT adjusted = requested;
             if (!m_host.fullScreen())
             {
                 // Preserve the real DWM left/right/bottom frame. Remove only the caption.
-                // Qt's procedure already ran above; use a separate native calculation so
-                // its frameless/geometry bookkeeping cannot erase the remaining frame.
+                // Use DefWindowProc for the ordinary frame inside Qt's native
+                // filter; Qt then observes the adjusted client area itself.
                 if (wParam)
                 {
                     NCCALCSIZE_PARAMS native = *reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
@@ -474,16 +560,23 @@ private:
         case WM_NCHITTEST:
             result = hitTest({ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) });
             return true;
-        case WM_PAINT:
-            DefSubclassProc(m_hwnd, message, wParam, lParam);
-            drawNativeTopBorder();
-            return true;
+        case WM_WINDOWPOSCHANGING:
+        {
+            constexpr UINT staleFrameFlags =
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
+            auto* position = reinterpret_cast<WINDOWPOS*>(lParam);
+            if (position && position->flags == staleFrameFlags)
+                position->flags |= SWP_NOCOPYBITS;
+            return false;
+        }
         case WM_SETTINGCHANGE:
         case WM_DWMCOMPOSITIONCHANGED:
             m_material.invalidate();
             scheduleSynchronize();
             return false;
         case WM_THEMECHANGED:
+        case WM_SYSCOLORCHANGE:
+        case WM_DWMCOLORIZATIONCOLORCHANGED:
             m_material.invalidate();
             scheduleSynchronize();
             return false;
@@ -523,7 +616,11 @@ private:
                     return true;
                 m_button  = m_hitTest.maximizeButton;
                 m_pressed = true;
+                const HWND hwnd = m_hwnd;
+                const quint64 generation = m_generation;
                 SetCapture(m_hwnd);
+                if (!guard || guard->m_hwnd != hwnd || guard->m_generation != generation || !m_button)
+                    return true;
                 m_host.buttonEvent(m_button, QEvent::MouseButtonPress, logicalPoint(point), Qt::LeftButton,
                                    Qt::LeftButton);
                 return true;
@@ -546,12 +643,17 @@ private:
         case WM_LBUTTONUP:
             if (m_pressed)
             {
+                const QPointer<WindowsBackend> guard(this);
+                const HWND hwnd = m_hwnd;
+                const quint64 generation = m_generation;
                 QPointer<QObject> button = m_button;
                 const POINT point        = screenPoint(message, lParam);
                 m_pressed                = false;
                 m_button.clear();
                 if (GetCapture() == m_hwnd)
                     ReleaseCapture();
+                if (!guard || guard->m_hwnd != hwnd || guard->m_generation != generation)
+                    return true;
                 if (button && m_host.owns(button) && !inputBlocked())
                     m_host.buttonEvent(button, QEvent::MouseButtonRelease, logicalPoint(point), Qt::LeftButton, {});
                 else if (button)
@@ -568,8 +670,8 @@ private:
             }
             return false;
         case WM_SYSKEYDOWN:
-            // WS_SYSMENU is suppressed only while system backdrop is active.
-            if (wParam == VK_SPACE && (lParam & (LPARAM(1) << 29)) && m_material.extendsFrame() && !inputBlocked() &&
+            // WS_SYSMENU is suppressed for every material, including Solid.
+            if (wParam == VK_SPACE && (lParam & (LPARAM(1) << 29)) && !inputBlocked() &&
                 !m_host.fullScreen())
             {
                 POINT point{ 0, 0 };
@@ -601,6 +703,8 @@ private:
         }
     }
     WindowsMaterial m_material;
+    bool m_destroying                    = false;
+    bool m_nativeFilterInstalled         = false;
     bool m_materialSurfaceRefreshed       = false;
     bool m_materialSurfaceRefreshPending  = false;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;

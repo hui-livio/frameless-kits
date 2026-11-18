@@ -110,7 +110,11 @@ bool WindowController::setMaximizeButton(QObject* item)
         report(QStringLiteral("Maximize button must be a QAbstractButton or a Qt Quick Controls AbstractButton."));
         return false;
     }
+    const QPointer<WindowController> guard(this);
+    const QPointer<QObject> candidate(item);
     m_backend->resetInput();
+    if (!guard || (item && !candidate))
+        return false;
     m_hitTest.maximizeButton = item;
     return true;
 }

@@ -9,11 +9,13 @@ inline bool windowCapability(const HostAdapter& host, Qt::WindowType hint)
 }
 inline bool canResizeWidth(const HostAdapter& host)
 {
-    return host.minimumSize().width() < host.maximumSize().width();
+    return !host.flags().testFlag(Qt::MSWindowsFixedSizeDialogHint) &&
+           host.minimumSize().width() < host.maximumSize().width();
 }
 inline bool canResizeHeight(const HostAdapter& host)
 {
-    return host.minimumSize().height() < host.maximumSize().height();
+    return !host.flags().testFlag(Qt::MSWindowsFixedSizeDialogHint) &&
+           host.minimumSize().height() < host.maximumSize().height();
 }
 inline bool canMaximize(const HostAdapter& host)
 {

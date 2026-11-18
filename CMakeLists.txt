@@ -34,6 +34,11 @@ framelesskit_option(BUILD_TESTING "Build FramelessKit tests" OFF)
 option(FRAMELESSKIT_INSTALL "Generate FramelessKit install rules" "${PROJECT_IS_TOP_LEVEL}")
 # Optional undocumented Windows compatibility path; modern DWM remains the default.
 framelesskit_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(FRAMELESSKIT_ENABLE_X11 "Enable the native X11 window menu when available" ON)
+    option(FRAMELESSKIT_ENABLE_WAYLAND "Enable the native Wayland window menu when available" ON)
+endif()
+set(FRAMELESSKIT_PRIVATE_QT_VERSION "")
 
 if(FRAMELESSKIT_BUILD_SHARED_LIBS)
     set(FRAMELESSKIT_LIBRARY_TYPE SHARED)

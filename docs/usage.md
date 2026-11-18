@@ -92,6 +92,23 @@ maximizeButton: maximizeButtonItem
 
 在此契约中，setMaximizeButton / maximizeButton 只负责输入适配与 Snap 命中，不自动再连接一个最大化动作。因此示例保留普通 Qt clicked / onClicked：最小化调用 showMinimized，最大化/还原调用 showMaximized / showNormal，关闭调用 close。
 
+## Linux 窗口菜单
+
+在 X11/XWayland 和 Wayland 上，标题栏右键与 Alt+Space 会请求桌面环境显示系统窗口菜单。X11 需要窗口管理器在 `_NET_SUPPORTED` 中公布 `_GTK_SHOW_WINDOW_MENU`；Wayland 需要当前鼠标/键盘输入事件提供有效 seat 与 serial，且合成器的 xdg-shell 支持该请求。库会在不支持时发出 `errorOccurred` 诊断，并保留 Qt 移动/缩放回退。
+
+系统菜单内容和是否显示由桌面环境决定；请求已发送不保证窗口管理器会绘制菜单。构建 Linux 版本时若 Qt 缺少相应平台原生接口、XCB 头文件或与当前 Qt 完全匹配的 `Qt6::GuiPrivate` / Wayland client 头文件，对应菜单适配会关闭，其他平台和基本窗口拖动/缩放仍可构建。
+
+```bash
+cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-linux --parallel
+QT_QPA_PLATFORM=xcb ./build-linux/bin/framelesskit_widgets_demo
+QT_QPA_PLATFORM=wayland ./build-linux/bin/framelesskit_quick_demo
+```
+
+`FRAMELESSKIT_ENABLE_X11` 与 `FRAMELESSKIT_ENABLE_WAYLAND` 默认开启，可分别设为 `OFF`。源码支持 Qt 6.8+；启用 Wayland 适配后，二进制安装包按构建时的 Qt 精确版本匹配，因为内部使用了 Qt 的 QPA / 高 DPI 私有接口。这些接口不暴露到公共头文件，安装消费者也不需要私有开发头文件。
+
+Linux 的 Solid / Transparent 与移动、缩放、最大化/还原共用原有 Agent API；没有增加公共后端选择接口。模糊、亚克力和云母继续按不支持回退，不模拟全局模糊或阴影。WSLg 未必提供可见系统菜单，在 KDE/GNOME 等实际桌面上的交互表现仍需对应环境验收。
+
 ## 必要接口清单
 
 | 用途 | Widgets | QML | 是否必需 |

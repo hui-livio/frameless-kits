@@ -27,7 +27,7 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 - **HostAdapter**：宿主对象、既有 QWindow 查询、对象归属、逻辑坐标命中、全屏状态。QWidget 和 QQuickItem 的映射分别实现；另负责首次创建前预留 alpha、验证既有表面与保存/恢复宿主背景，不隐式重建表面。
 - **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘由平台后端优先判断；Windows 后端处理模态输入与原生按钮序列。
 - **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再准备透明宿主背景并配置原生效果；成功后提交 applied，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。
-- **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 及非原生平台插件使用 Qt 回退。
+- **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 后端向 X11 / Wayland 合成器请求系统窗口菜单，并用 Qt 公共 API 执行移动/缩放。非原生插件保留 Qt 回退。
 
 ## 统一初始化的链接方式
 
@@ -45,7 +45,7 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 
 - Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC、AppKit、QuartzCore 与 CoreGraphics；尚无 Mac 编译与 example 运行证据。
 - Windows example 的 DWM 边框/阴影与基本窗口命令已获用户确认，Windows 11 Snap 弹层及跨屏 DPI 仍待验证。
-- Linux 仍是 Qt 回退，尚未接入 X11/Wayland 专用菜单与阴影。
+- Linux 系统菜单接入 X11 `_GTK_SHOW_WINDOW_MENU` 与 Wayland `xdg_toplevel.show_window_menu`；菜单可见性由 WM/compositor 决定，不对未公告能力的桌面伪造成功。移动/缩放仍由 Qt 公共 API 处理；不宣称提供 X11/Wayland 原生窗口阴影。
 - 按当前用户要求，以 Widgets / QML example 的实际效果验收，不新增 UT。
 - Windows 10 原生 example 的材质切换/降级可运行；Windows 11 系统 backdrop、Cocoa 材质及 Linux 透明仍待平台视觉验收。
 
@@ -61,8 +61,8 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 
 参考本地 `qwindowkit/src/core/contexts/win32windowcontext.cpp` 的 `windowAttributeChanged()`，及 `cocoawindowcontext.mm` 的 `findBlurEffectView()` / `setBlurEffect()`，以原理对齐而非迁入其动态属性 API。
 
-- Windows 原生效果应用前先使 Qt 宿主背景透明。Accent Blur 使用普通 margins；现代 backdrop 使用 `{65536, 0, 0, 0}` 从左侧覆盖客户区，既不能把 Win10 的 top 1px 扩展叠在 backdrop 上，也不对 Blur 使用全窗口扩展。Transparent 使用与 Qt 6.8.3 一致的 `CreateRectRgn(0, 0, -1, -1)` 离客户区 region；不能替换成零大小 region，后者在 Win10 上导致白底。该 DWM alpha 请求不叠加到 Accent / backdrop。
-- 现代 backdrop 生效期间屏蔽 `WS_SYSMENU`，避免系统标题栏按钮图案透出；切回普通材质恢复。应用已有按钮事件桥接与右键菜单不变；Alt+Space 由模块接回显式菜单逻辑。
+- Windows 原生效果应用前先使 Qt 宿主背景透明。Accent Blur 使用普通 margins（Win10 与普通原生边框一样保留 top 1px 扩展）；现代 backdrop 使用 `{65536, 0, 0, 0}` 从左侧覆盖客户区，既不能把 Win10 的 top 1px 扩展叠在 backdrop 上，也不对 Blur 使用全窗口扩展。Transparent 使用与 Qt 6.8.3 一致的 `CreateRectRgn(0, 0, -1, -1)` 离客户区 region；不能替换成零大小 region，后者在 Win10 上导致白底。该 DWM alpha 请求不叠加到 Accent / backdrop。
+- 绑定期间统一屏蔽 `WS_SYSMENU`，对齐 qwindowkit，避免透明标题栏露出系统按钮；解绑按属性归属恢复。自定义按钮、右键系统菜单和 Alt+Space 由模块接回显式逻辑，覆盖 Solid / Transparent / Blur / 系统 backdrop。
 - Quick 首次启用非 Solid 材质（包括 Transparent）时，按 qwindowkit 的一次性 resize/move 原理刷新原生合成表面；同一 HWND 仅执行一次，禁止中间重绘、保持激活状态和 Z 顺序，并在同一回调恢复原始物理窗口矩形。Widgets 不执行；最大化/最小化/全屏期间不执行，恢复普通窗口后再尝试。该 workaround 不销毁原生表面。
 - Cocoa 除 NSWindow 外，还让 Qt NSView 的 CALayer 透出背景；效果视图覆盖其父容器 bounds、置于 Qt 视图下方，并采用 Active 状态和 VibrantLight / VibrantDark 外观。切回 Solid / 解绑时恢复接管的 layer 字段，CGColor 按 CoreGraphics 所有权规则释放。
 - 不照搬旧 Windows 11 的私有 Mica 属性：仍按设计要求仅保证 build 22621+ 的公开 backdrop。build 22621+ 的 Acrylic 使用与 qwindowkit 相同的系统 Desktop Acrylic。按用户要求，旧系统 Acrylic 与 Mica 一样回退默认 Solid，不启用 Accent Acrylic；qwindowkit 中的注释样例不作为实际实现。Linux 仍不增加 qwindowkit 本身也未提供的通用原生模糊后端。
@@ -84,3 +84,13 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 - 现代 Acrylic 保留 `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`、左侧 frame 扩展和 Quick 首次表面刷新。这是 qwindowkit 的实际 Acrylic 调用路径；视觉效果仍待 Win11 对应系统验收。
 - 删除旧 Accent Acrylic 的状态 4、tint / alpha 与兼容版本分支；既有 `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` 仅控制 Blur。
 - 原生 Blur 不提供半径 / sigma / 迭代次数配置；系统 Acrylic 也不承诺可调半径。可调的应用内部内容模糊应独立于窗口材质功能。
+
+### 透明 / Blur 原生白边与上游修复对齐（2026-11-18）
+
+- 在 HWND 绑定时准备深色原生边框，补齐 qwindowkit 的 UxTheme 原生主题支持与菜单缓存刷新。Windows 10 1903+ 使用 `SetPreferredAppMode(AllowDark/PAM_AUTO)`，1809 使用旧版 `AllowDarkModeForApp`；不设置 ForceDark，不修改 Qt 调色板或渲染器。该原生菜单主题能力是进程级设置，单窗口解绑不关闭它，避免影响其他受管窗口。DWM 明暗属性仍保存、按归属恢复。
+- Solid / Transparent / Blur 使用深色原生边框；系统 backdrop 保持按宿主背景选择明暗。移除试验中的 Win11 显式边框颜色和首次材质延迟刷新，未将它们当作上游修复保留。
+- Win10 普通材质包含 Blur 均使用 top 1px frame 扩展。Qt Widgets 顶边在 Expose / UpdateRequest 完成后绘制；主题、系统颜色、DWM 强调色变化重新应用外观。框架变更采用 qwindowkit 的 `SWP_NOCOPYBITS` 处理。
+- 两项上游 workaround 不直接移植：失焦时扩展整个标题栏会在当前预留 alpha 的宿主上露出深色标题带；WM_SHOWWINDOW 中增减 1px 会导致当前 Quick 窗口隐藏/显示后几何变化。保留普通 top 1px 和已有 Quick 首次材质表面刷新，已撤销这两项回归。
+- Win10 build 19045 的受控捕获中，Widgets example 首次透明 / Blur 切换没有纯白边框；两端 Blur 失焦后没有顶部白线。自动下拉框探针仍显示 popup 状态，不能替代真实点击关闭下拉框的人工验收。用户实际首次切换场景仍须复查。Win11 / macOS 视觉效果未在本轮验证。
+- Qt 6.8 的 `WM_NCCALCSIZE` 在 `QAbstractNativeEventFilter` 中完成客户区修正，子类化窗口过程直接转发该消息给 Qt，避免在 Qt 已缓存普通标题栏边距后再覆盖矩形。仍用 `SetWindowSubclass` 维护每个窗口的过程链，原生过滤器只处理自身 HWND 的尺寸消息。
+- 上游 issue、PR 中文摘要、移植范围和平台验证边界见 [upstream-fixes.md](upstream-fixes.md)。

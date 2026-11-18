@@ -138,9 +138,14 @@ public:
     {
         if (auto* item = qobject_cast<QQuickItem*>(object))
         {
+            const QPointer<QQuickItem> guard(item);
             item->ungrabMouse();
+            if (!guard)
+                return;
             QEvent cancel(QEvent::UngrabMouse);
             QCoreApplication::sendEvent(item, &cancel);
+            if (!guard)
+                return;
             QHoverEvent leave(QEvent::HoverLeave, QPointF{}, QPointF{}, QPointF{},
                               QGuiApplication::keyboardModifiers());
             QCoreApplication::sendEvent(item, &leave);
@@ -273,9 +278,12 @@ QQuickItem* WindowAgent::maximizeButton() const
 
 void WindowAgent::setMaximizeButton(QQuickItem* item)
 {
+    const QPointer<WindowAgent> guard(this);
     if (!Internal::checkGuiThread("WindowAgent::setMaximizeButton") || d->maximizeButton == item)
         return;
     if (d->complete && d->controller && !d->controller->setMaximizeButton(item))
+        return;
+    if (!guard)
         return;
     disconnect(d->buttonDestroyed);
     d->maximizeButton = item;

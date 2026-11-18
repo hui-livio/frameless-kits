@@ -1,10 +1,16 @@
 @PACKAGE_INIT@
+set(FramelessKit_QML_IMPORT_PATH "@PACKAGE_FRAMELESSKIT_QML_INSTALL_DIR@")
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 6.8 COMPONENTS Core Gui)
+if(NOT "@FRAMELESSKIT_PRIVATE_QT_VERSION@" STREQUAL "")
+    # The optional Wayland adapter uses Qt QPA. Match its build-time Qt ABI;
+    # installed consumers do not need Qt private development headers.
+    find_dependency(Qt6 @FRAMELESSKIT_PRIVATE_QT_VERSION@ EXACT COMPONENTS Core Gui)
+else()
+    find_dependency(Qt6 6.8 COMPONENTS Core Gui)
+endif()
 set(FramelessKit_Core_FOUND TRUE)
 set(FramelessKit_Widgets_FOUND @FRAMELESSKIT_BUILD_WIDGETS@)
 set(FramelessKit_Quick_FOUND @FRAMELESSKIT_BUILD_QUICK@)
-set(FramelessKit_QML_IMPORT_PATH "@PACKAGE_FRAMELESSKIT_QML_INSTALL_DIR@")
 include("${CMAKE_CURRENT_LIST_DIR}/FramelessKitCoreTargets.cmake")
 if(NOT FramelessKit_FIND_COMPONENTS)
     set(FramelessKit_FIND_COMPONENTS Core)

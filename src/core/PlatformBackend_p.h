@@ -4,8 +4,11 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <array>
 #include <functional>
 #include <memory>
+
+class QWindow;
 
 namespace FramelessKit::Internal
 {
@@ -54,6 +57,9 @@ protected:
     quint64 m_generation = 0;
 
 private:
+    void observeCursorWindow(QWindow* window);
+    void restoreCursor();
+    bool updateCursor(QWindow* window, Qt::Edges edges);
     std::function<void()> m_materialRefresh;
     bool m_changedFrameless  = false;
     bool m_originalFrameless = false;
@@ -61,6 +67,9 @@ private:
     bool m_surfaceDestroying = false;
     bool m_cursorChanged     = false;
     QCursor m_originalCursor;
+    QPointer<QWindow> m_cursorWindow;
+    QPointer<QWindow> m_observedCursorWindow;
+    std::array<QMetaObject::Connection, 5> m_cursorConnections;
     enum class MouseState
     {
         Idle,

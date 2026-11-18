@@ -18,10 +18,6 @@ public:
         return m_applied;
     }
     static bool usesSystemBackdrop(Material material);
-    bool extendsFrame() const
-    {
-        return usesSystemBackdrop(m_applied);
-    }
     void invalidate()
     {
         m_valid = false;
