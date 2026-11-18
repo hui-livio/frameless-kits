@@ -24,7 +24,11 @@ if(WIN32)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_sources(fk_core PRIVATE CocoaBackend.mm)
     set_source_files_properties(CocoaBackend.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-    target_link_libraries(fk_core PRIVATE "-framework AppKit")
+    target_link_libraries(fk_core PRIVATE
+        "-framework AppKit"
+        "-framework QuartzCore"
+        "-framework CoreGraphics"
+    )
 endif()
 
 if(FRAMELESSKIT_INSTALL)

@@ -5,6 +5,7 @@
 #include <QGuiApplication>
 #include <QPointer>
 #include <QWindow>
+#import <QuartzCore/CALayer.h>
 #import <objc/runtime.h>
 #include <vector>
 
@@ -204,6 +205,25 @@ protected:
             error = QStringLiteral("The Cocoa view has no native background container; using Solid.");
             return false;
         }
+        m_view.wantsLayer = YES;
+        CALayer* layer    = m_view.layer;
+        if (!layer)
+        {
+            error = QStringLiteral("The Cocoa view has no compositing layer; using Solid.");
+            return false;
+        }
+        if (m_materialLayer != layer)
+        {
+            restoreMaterialLayer(true);
+            m_materialLayer       = layer;
+            m_originalLayerOpaque = layer.opaque;
+            if (layer.backgroundColor)
+                m_originalLayerBackground = CGColorRetain(layer.backgroundColor);
+        }
+        // NSWindow transparency alone is insufficient: Qt's native layer must
+        // also let the sibling NSVisualEffectView show through, as in qwindowkit.
+        layer.opaque          = NO;
+        layer.backgroundColor = NSColor.clearColor.CGColor;
         if (!m_materialOwned)
         {
             m_originalOpaque     = m_window.opaque;
@@ -216,17 +236,22 @@ protected:
         {
             if (!m_effect)
             {
-                m_effect                  = [[NSVisualEffectView alloc] initWithFrame:m_view.frame];
+                m_effect                  = [[NSVisualEffectView alloc] initWithFrame:m_view.superview.bounds];
                 m_effect.material         = NSVisualEffectMaterialUnderWindowBackground;
                 m_effect.blendingMode     = NSVisualEffectBlendingModeBehindWindow;
-                m_effect.state            = NSVisualEffectStateFollowsWindowActiveState;
+                m_effect.state            = NSVisualEffectStateActive;
+                m_effect.wantsLayer       = YES;
+                m_effect.layer.opaque     = NO;
                 m_effect.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
             }
             // A sibling BELOW Qt's native content view, never a child painted over
             // Qt's controls. Do not replace Qt's NSWindow contentView or delegate.
             if (m_effect.superview != m_view.superview)
                 [m_view.superview addSubview:m_effect positioned:NSWindowBelow relativeTo:m_view];
-            m_effect.frame = m_view.frame;
+            m_effect.frame  = m_view.superview.bounds;
+            const bool dark = m_host.materialColor().lightnessF() < 0.5;
+            m_effect.appearance =
+                [NSAppearance appearanceNamed:dark ? NSAppearanceNameVibrantDark : NSAppearanceNameVibrantLight];
         }
         else
         {
@@ -378,8 +403,24 @@ private:
         // AppKit owns the native buttons, resizing, rounding and fullscreen controls.
         // Do not force Resizable: Qt's flags and fixed-size constraints remain authoritative.
     }
+    void restoreMaterialLayer(bool restore)
+    {
+        if (restore && m_materialLayer)
+        {
+            if (!m_materialLayer.opaque)
+                m_materialLayer.opaque = m_originalLayerOpaque;
+            CGColorRef current = m_materialLayer.backgroundColor;
+            if (current && CGColorEqualToColor(current, NSColor.clearColor.CGColor))
+                m_materialLayer.backgroundColor = m_originalLayerBackground;
+        }
+        if (m_originalLayerBackground)
+            CGColorRelease(m_originalLayerBackground);
+        m_originalLayerBackground = nullptr;
+        m_materialLayer           = nil;
+    }
     void clearMaterial(bool restore)
     {
+        restoreMaterialLayer(restore);
         [m_effect removeFromSuperview];
         m_effect = nil;
         if (restore && m_materialOwned && m_window)
@@ -425,6 +466,9 @@ private:
             window.movableByWindowBackground = m_originalBackgroundMove;
     }
 
+    CALayer* __strong m_materialLayer            = nil;
+    CGColorRef m_originalLayerBackground         = nullptr;
+    BOOL m_originalLayerOpaque                   = YES;
     NSVisualEffectView* __strong m_effect        = nil;
     NSColor* __strong m_originalBackground       = nil;
     id __strong m_accessibilityObserver          = nil;

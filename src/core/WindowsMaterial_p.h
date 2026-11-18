@@ -13,10 +13,14 @@ public:
     void bind(HWND window);
     void release(bool restore);
     bool apply(Material material, const QColor& color, QString& error);
+    Material applied() const
+    {
+        return m_applied;
+    }
+    static bool usesSystemBackdrop(Material material);
     bool extendsFrame() const
     {
-        return m_applied == Material::Mica || m_applied == Material::MicaAlt ||
-               (m_applied == Material::Acrylic && m_backdropChanged);
+        return usesSystemBackdrop(m_applied);
     }
     void invalidate()
     {

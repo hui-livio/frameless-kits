@@ -26,7 +26,7 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 - **WindowController**：独占逻辑绑定注册表、重复绑定保护、统一错误通知、弱注册对象；只接受本窗口内的对象。销毁解除逻辑绑定，不创建原生句柄。
 - **HostAdapter**：宿主对象、既有 QWindow 查询、对象归属、逻辑坐标命中、全屏状态。QWidget 和 QQuickItem 的映射分别实现；另负责首次创建前预留 alpha、验证既有表面与保存/恢复宿主背景，不隐式重建表面。
 - **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘由平台后端优先判断；Windows 后端处理模态输入与原生按钮序列。
-- **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再由后端配置系统效果；成功后让宿主背景透明，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。
+- **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再准备透明宿主背景并配置原生效果；成功后提交 applied，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。
 - **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 及非原生平台插件使用 Qt 回退。
 
 ## 统一初始化的链接方式
@@ -43,7 +43,7 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 
 ## 待验证与后续工作
 
-- Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC 和 AppKit；尚无 Mac 编译与 example 运行证据。
+- Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC、AppKit、QuartzCore 与 CoreGraphics；尚无 Mac 编译与 example 运行证据。
 - Windows example 的 DWM 边框/阴影与基本窗口命令已获用户确认，Windows 11 Snap 弹层及跨屏 DPI 仍待验证。
 - Linux 仍是 Qt 回退，尚未接入 X11/Wayland 专用菜单与阴影。
 - 按当前用户要求，以 Widgets / QML example 的实际效果验收，不新增 UT。
@@ -56,3 +56,31 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 - Qt 回退只接受 Solid / Transparent，后者仍要求宿主 alpha。没有通过假模糊或全局透明度模拟 Linux 原生模糊；不承诺 Wayland / X11 合成器一定显示透明。
 - HostAdapter 的透明背景接管是可逆的，不覆盖任意自定义绘制。失败后 `effectiveMaterial == Solid` 表示回到宿主背景，不意味着库会强制给原本透明的应用绘制纯色。
 - 材质应用保护同步背景通知中的销毁及请求重入；切换过程中出现的新请求在当前调用结束后排队重放。错误通知排队发送，防止原生处理链被业务槽函数直接拆毁。
+
+## qwindowkit 材质对照
+
+参考本地 `qwindowkit/src/core/contexts/win32windowcontext.cpp` 的 `windowAttributeChanged()`，及 `cocoawindowcontext.mm` 的 `findBlurEffectView()` / `setBlurEffect()`，以原理对齐而非迁入其动态属性 API。
+
+- Windows 原生效果应用前先使 Qt 宿主背景透明。Accent Blur 使用普通 margins；现代 backdrop 使用 `{65536, 0, 0, 0}` 从左侧覆盖客户区，既不能把 Win10 的 top 1px 扩展叠在 backdrop 上，也不对 Blur 使用全窗口扩展。Transparent 使用与 Qt 6.8.3 一致的 `CreateRectRgn(0, 0, -1, -1)` 离客户区 region；不能替换成零大小 region，后者在 Win10 上导致白底。该 DWM alpha 请求不叠加到 Accent / backdrop。
+- 现代 backdrop 生效期间屏蔽 `WS_SYSMENU`，避免系统标题栏按钮图案透出；切回普通材质恢复。应用已有按钮事件桥接与右键菜单不变；Alt+Space 由模块接回显式菜单逻辑。
+- Quick 首次启用非 Solid 材质（包括 Transparent）时，按 qwindowkit 的一次性 resize/move 原理刷新原生合成表面；同一 HWND 仅执行一次，禁止中间重绘、保持激活状态和 Z 顺序，并在同一回调恢复原始物理窗口矩形。Widgets 不执行；最大化/最小化/全屏期间不执行，恢复普通窗口后再尝试。该 workaround 不销毁原生表面。
+- Cocoa 除 NSWindow 外，还让 Qt NSView 的 CALayer 透出背景；效果视图覆盖其父容器 bounds、置于 Qt 视图下方，并采用 Active 状态和 VibrantLight / VibrantDark 外观。切回 Solid / 解绑时恢复接管的 layer 字段，CGColor 按 CoreGraphics 所有权规则释放。
+- 不照搬旧 Windows 11 的私有 Mica 属性：仍按设计要求仅保证 build 22621+ 的公开 backdrop。build 22621+ 的 Acrylic 使用与 qwindowkit 相同的系统 Desktop Acrylic。按用户要求，旧系统 Acrylic 与 Mica 一样回退默认 Solid，不启用 Accent Acrylic；qwindowkit 中的注释样例不作为实际实现。Linux 仍不增加 qwindowkit 本身也未提供的通用原生模糊后端。
+
+以上是实现路径对照，不是视觉一致性结论。Windows 11 / macOS 效果、首次 Quick 材质刷新对窗口几何的影响，仍须使用对应系统的 example 检查。
+
+### Windows 10 实际渲染排查（2026-11-17）
+
+- 在忽略的 build 目录使用调用公开 Agent API 的临时受控背景程序，并排查看 Widgets / Quick。零大小 DWM region 可复现两端白底；修正 region 并让 Quick 的一次性表面刷新覆盖 Transparent 后，两端均能清晰透出棋盘格与背景文字，前景文字及不透明控件仍正常。没有加入 UT 或正式构建目标。
+- Legacy Acrylic 只保留 tint 标志，不照搬 qwindowkit 注释代码中的 482；qwindowkit 实际的 Acrylic 主路径是 Windows 11 system backdrop，不能将其注释当成 Win10 已验证实现。
+- Blur / legacy Acrylic 在保留原生非客户区时仍观察到边缘内框 / 色带，尚未达到用户的视觉预期。不能仅凭 effectiveMaterial 或原生 API 返回成功声称修复。
+- 后续桌面捕获返回全黑且输入桌面访问被拒绝，未获得可用的 qwindowkit 同背景对照图；Windows 11、macOS 也没有新的视觉验证证据。
+
+### 材质验收与 Acrylic 回退策略（2026-11-18）
+
+- 用户确认 Widgets / QML 的透明与 Blur 效果正常；此前 Blur 尚未验收的记录保留为排查历史。
+- 按用户明确要求，Windows 10 的 Acrylic 与 Mica / MicaAlt 一样回退默认 Solid，恢复宿主背景，不使用旧 Accent Acrylic。不强制覆盖应用原有背景颜色。
+- Acrylic / Mica / MicaAlt 统一要求 build 22621+；系统能力不足时，保留材质请求、报告版本要求，effectiveMaterial 为 Solid。后续切回 Blur / Transparent 正常应用。
+- 现代 Acrylic 保留 `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`、左侧 frame 扩展和 Quick 首次表面刷新。这是 qwindowkit 的实际 Acrylic 调用路径；视觉效果仍待 Win11 对应系统验收。
+- 删除旧 Accent Acrylic 的状态 4、tint / alpha 与兼容版本分支；既有 `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` 仅控制 Blur。
+- 原生 Blur 不提供半径 / sigma / 迭代次数配置；系统 Acrylic 也不承诺可调半径。可调的应用内部内容模糊应独立于窗口材质功能。

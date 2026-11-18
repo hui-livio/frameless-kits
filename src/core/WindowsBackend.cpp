@@ -53,9 +53,19 @@ public:
     }
     bool applyMaterial(Material material, QString& error) override
     {
+        const QPointer<WindowsBackend> guard(this);
+        // Like qwindowkit: restore ordinary margins for Accent Blur, extend from
+        // the left for system backdrops, then configure the native material.
+        synchronizeNative(material);
+        if (!guard)
+            return false;
         const bool ok = m_material.apply(material, m_host.materialColor(), error);
-        if (m_hwnd)
-            updateDwmFrame();
+        if (!guard)
+            return false;
+        if (!ok)
+            synchronizeNative(m_material.applied());
+        if (guard && ok)
+            scheduleMaterialSurfaceRefresh();
         return ok;
     }
     bool materialReady() const override
@@ -82,7 +92,11 @@ protected:
     }
     void synchronizeNative() override
     {
-        auto* window = m_host.window();
+        synchronizeNative(m_material.applied());
+    }
+    void synchronizeNative(Material material)
+    {
+        auto* window    = m_host.window();
         // handle() is a non-creating public query. winId() is only safe after it succeeds.
         HWND hwnd    = window && window->handle() ? reinterpret_cast<HWND>(window->winId()) : nullptr;
         bool newBinding = false;
@@ -110,7 +124,11 @@ protected:
         if (newBinding)
             m_material.bind(m_hwnd);
         const auto previous = GetWindowLongPtrW(m_hwnd, GWL_STYLE);
-        LONG_PTR desired    = WS_CAPTION | WS_SYSMENU;
+        // Transparent system backdrops otherwise expose native caption glyphs.
+        // Our registered Qt buttons and explicit system menu remain authoritative.
+        LONG_PTR desired    = WS_CAPTION;
+        if (!WindowsMaterial::usesSystemBackdrop(material))
+            desired |= WS_SYSMENU;
         if (!m_host.fullScreen())
         {
             // Fixed-size windows still need a thick frame for the native DWM border/shadow.
@@ -134,14 +152,16 @@ protected:
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
             if (preserveClient) preserveClientGeometry(clientBefore, originBefore);
         }
-        updateDwmFrame();
+        updateDwmFrame(material);
     }
     void releaseNative(bool restore) override
     {
         resetInput();
         m_material.release(restore);
-        HWND hwnd = m_hwnd;
-        m_hwnd    = nullptr;
+        m_materialSurfaceRefreshed      = false;
+        m_materialSurfaceRefreshPending = false;
+        HWND hwnd                       = m_hwnd;
+        m_hwnd                          = nullptr;
         ++m_generation;
         if (!hwnd || !IsWindow(hwnd))
             return;
@@ -180,7 +200,7 @@ private:
                          frame.right - frame.left + dw, frame.bottom - frame.top + dh,
                          SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    void updateDwmFrame()
+    void updateDwmFrame(Material material)
     {
         BOOL composition = FALSE;
         if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition) return;
@@ -189,13 +209,57 @@ private:
         // The side/bottom frame is real non-client area. Windows 10 additionally
         // needs the removed top edge extended into the client for native rendering.
         MARGINS margins{};
-        if (!m_host.fullScreen() && !IsZoomed(m_hwnd) && !isWindows11())
+        if (material != Material::Blur && !WindowsMaterial::usesSystemBackdrop(material) && !m_host.fullScreen() &&
+            !IsZoomed(m_hwnd) && !isWindows11())
             margins.cyTopHeight = 1;
         // Extend from the left only: negative/full top margins can resurrect the
         // hidden caption when Windows accent-colored title bars are enabled.
-        if (m_material.extendsFrame())
+        if (WindowsMaterial::usesSystemBackdrop(material))
             margins.cxLeftWidth = 65536;
         DwmExtendFrameIntoClientArea(m_hwnd, &margins);
+    }
+    void scheduleMaterialSurfaceRefresh()
+    {
+        // qwindowkit's effectBugWorkaround: Quick may keep the old native
+        // composition surface until the first resize/move. Plain transparency needs
+        // this too, even with a valid alpha buffer. Widgets do not need it.
+        if (m_materialSurfaceRefreshed || m_materialSurfaceRefreshPending || !m_hwnd || !m_host.host() ||
+            m_host.host()->isWidgetType() || m_material.applied() == Material::Solid)
+            return;
+        m_materialSurfaceRefreshPending = true;
+        const quint64 generation        = m_generation;
+        QTimer::singleShot(0, this,
+                           [this, generation]
+                           {
+                               if (generation != m_generation)
+                                   return;
+                               m_materialSurfaceRefreshPending = false;
+                               if (!m_hwnd || !IsWindowVisible(m_hwnd) || IsZoomed(m_hwnd) || IsIconic(m_hwnd) ||
+                                   m_host.fullScreen() || m_material.applied() == Material::Solid)
+                                   return; // A later show/restore retries; do not alter maximized geometry.
+                               RECT frame{};
+                               if (!GetWindowRect(m_hwnd, &frame))
+                                   return;
+                               m_materialSurfaceRefreshed = true;
+                               const QPointer<WindowsBackend> guard(this);
+                               const HWND hwnd  = m_hwnd;
+                               const auto valid = [&]
+                               { return guard && guard->m_hwnd == hwnd && guard->m_generation == generation; };
+                               // Suppress intermediate painting, preserve z-order/activation, restore
+                               // the original physical frame rectangle in this same callback.
+                               constexpr UINT flags = SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOREDRAW;
+                               SetWindowPos(hwnd, nullptr, frame.left, frame.top, 1, 1, flags);
+                               if (!valid())
+                                   return;
+                               SetWindowPos(hwnd, nullptr, frame.right - 1, frame.bottom - 1, 1, 1, flags);
+                               if (!valid())
+                                   return;
+                               SetWindowPos(hwnd, nullptr, frame.left, frame.top, frame.right - frame.left,
+                                            frame.bottom - frame.top, flags);
+                               if (!valid())
+                                   return;
+                               RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+                           });
     }
     static bool isWindows11()
     {
@@ -503,6 +567,17 @@ private:
                 return true;
             }
             return false;
+        case WM_SYSKEYDOWN:
+            // WS_SYSMENU is suppressed only while system backdrop is active.
+            if (wParam == VK_SPACE && (lParam & (LPARAM(1) << 29)) && m_material.extendsFrame() && !inputBlocked() &&
+                !m_host.fullScreen())
+            {
+                POINT point{ 0, 0 };
+                ClientToScreen(m_hwnd, &point);
+                systemMenu(point);
+                return true;
+            }
+            return false;
         case WM_SYSCOMMAND:
         {
             const UINT command = UINT(wParam) & 0xfff0;
@@ -526,6 +601,8 @@ private:
         }
     }
     WindowsMaterial m_material;
+    bool m_materialSurfaceRefreshed       = false;
+    bool m_materialSurfaceRefreshPending  = false;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;
     bool m_haveOriginalPolicy = false;
     HWND m_hwnd              = nullptr;

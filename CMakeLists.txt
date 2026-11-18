@@ -33,7 +33,7 @@ framelesskit_option(BUILD_EXAMPLES "Build example applications" "${PROJECT_IS_TO
 framelesskit_option(BUILD_TESTING "Build FramelessKit tests" OFF)
 option(FRAMELESSKIT_INSTALL "Generate FramelessKit install rules" "${PROJECT_IS_TOP_LEVEL}")
 # Optional undocumented Windows compatibility path; modern DWM remains the default.
-framelesskit_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur/Acrylic" ON)
+framelesskit_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur" ON)
 
 if(FRAMELESSKIT_BUILD_SHARED_LIBS)
     set(FRAMELESSKIT_LIBRARY_TYPE SHARED)

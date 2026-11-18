@@ -34,21 +34,25 @@ struct CompositionData
     void* data;
     SIZE_T size;
 };
-bool accent(HWND window, int state, const QColor& color)
+bool accent(HWND window, int state)
 {
     using SetComposition       = BOOL(WINAPI*)(HWND, CompositionData*);
     static auto setComposition = reinterpret_cast<SetComposition>(
         GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowCompositionAttribute"));
     if (!setComposition)
         return false;
-    const DWORD tint =
-        (DWORD(180) << 24) | (DWORD(color.blue()) << 16) | (DWORD(color.green()) << 8) | DWORD(color.red());
-    AccentPolicy policy{ state, state == 4 ? 2 : 0, state == 4 ? tint : 0, 0 };
+    // Only legacy Blur uses Accent; Acrylic shares Mica's system-backdrop gate.
+    AccentPolicy policy{ state, 0, 0, 0 };
     CompositionData data{ 19, &policy, sizeof(policy) };
     return setComposition(window, &data);
 }
 #endif
 } // namespace
+bool WindowsMaterial::usesSystemBackdrop(Material material)
+{
+    return windowsBuild() >= 22621 &&
+           (material == Material::Mica || material == Material::MicaAlt || material == Material::Acrylic);
+}
 void WindowsMaterial::bind(HWND window)
 {
     m_window       = window;
@@ -64,7 +68,7 @@ bool WindowsMaterial::clear(QString& error)
 #if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
     if (m_accentChanged)
     {
-        if (accent(m_window, 0, Qt::white))
+        if (accent(m_window, 0))
             m_accentChanged = false;
         else
         {
@@ -191,14 +195,17 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             m_darkChanged = true;
             m_lastDark    = dark;
         }
-        if (material == Material::Mica || material == Material::MicaAlt ||
-            (material == Material::Acrylic && windowsBuild() >= 22621))
+        if (material == Material::Mica || material == Material::MicaAlt || material == Material::Acrylic)
         {
             if (windowsBuild() < 22621)
             {
-                error = QStringLiteral("Mica/MicaAlt requires Windows 11 22H2 (build 22621) or later; using Solid.");
+                error = QStringLiteral("%1 requires Windows 11 22H2 (build 22621) or later; using Solid.")
+                            .arg(material == Material::Acrylic ? QStringLiteral("Acrylic")
+                                                             : QStringLiteral("Mica/MicaAlt"));
                 return false;
             }
+            // DWMSBT_TRANSIENTWINDOW (3) is Desktop Acrylic, as in qwindowkit.
+            // Like Mica, unsupported systems fall back to the host's Solid background.
             const int type = material == Material::Mica ? 2 : material == Material::Acrylic ? 3 : 4;
             HRESULT hr     = DwmSetWindowAttribute(m_window, systemBackdropAttribute, &type, sizeof(type));
             if (FAILED(hr))
@@ -209,41 +216,44 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             m_backdropChanged = m_backdropOwned = true;
             m_lastBackdrop                      = type;
         }
-        else if (material == Material::Blur || material == Material::Acrylic)
+        else if (material == Material::Blur)
         {
 #if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
-            if (windowsBuild() < 10240 || (material == Material::Acrylic && windowsBuild() < 17134) ||
-                !accent(m_window, material == Material::Blur ? 3 : 4, color))
+            if (windowsBuild() < 10240 || !accent(m_window, 3))
             {
-                error = QStringLiteral("Legacy Accent material is unavailable or rejected by Windows; using Solid.");
+                error = QStringLiteral("Legacy Accent Blur is unavailable or rejected by Windows; using Solid.");
                 return false;
             }
             m_accentChanged = true;
 #else
-            error =
-                QStringLiteral("Blur / pre-22H2 Acrylic requires FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON; using Solid.");
+            error = QStringLiteral("Blur requires FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON; using Solid.");
             return false;
 #endif
         }
-        // An empty blur region enables alpha composition without adding a second
-        // blur effect. Qt's native (non-layered) Widgets surface keeps its DWM frame.
-        DWM_BLURBEHIND blur{};
-        blur.dwFlags  = DWM_BB_ENABLE | DWM_BB_BLURREGION;
-        blur.fEnable  = TRUE;
-        blur.hRgnBlur = CreateRectRgn(0, 0, 0, 0);
-        if (!blur.hRgnBlur)
+        // Only plain transparency needs this alpha-composition request.
+        // Match Qt's off-client alpha region, not a zero-sized region (opaque on Win10).
+        // Do not submit this region on top of Accent's full-window
+        // blur; system backdrops likewise use their own DWM composition path.
+        if (material == Material::Transparent)
         {
-            error = QStringLiteral("Cannot allocate the DWM alpha region.");
-            return false;
+            DWM_BLURBEHIND blur{};
+            blur.dwFlags  = DWM_BB_ENABLE | DWM_BB_BLURREGION;
+            blur.fEnable  = TRUE;
+            blur.hRgnBlur = CreateRectRgn(0, 0, -1, -1);
+            if (!blur.hRgnBlur)
+            {
+                error = QStringLiteral("Cannot allocate the DWM alpha region.");
+                return false;
+            }
+            const HRESULT hr = DwmEnableBlurBehindWindow(m_window, &blur);
+            DeleteObject(blur.hRgnBlur);
+            if (FAILED(hr))
+            {
+                error = failure("DwmEnableBlurBehindWindow(alpha)", hr);
+                return false;
+            }
+            m_blurChanged = true;
         }
-        HRESULT hr = DwmEnableBlurBehindWindow(m_window, &blur);
-        DeleteObject(blur.hRgnBlur);
-        if (FAILED(hr))
-        {
-            error = failure("DwmEnableBlurBehindWindow(alpha)", hr);
-            return false;
-        }
-        m_blurChanged = true;
     }
     m_applied = material;
     m_color   = color;

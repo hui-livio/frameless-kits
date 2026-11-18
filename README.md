@@ -48,7 +48,7 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 | `FRAMELESSKIT_BUILD_EXAMPLES` | `ON` | `OFF` | 示例应用 |
 | `FRAMELESSKIT_BUILD_TESTING` | `OFF` | `OFF` | 现有测试与 Qt Test 依赖 |
 | `FRAMELESSKIT_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 插件和 CMake 包的安装规则 |
-| `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows 兼容路径：Blur、旧版 Windows 的 Acrylic；可关闭以禁用私有 Accent API |
+| `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows Blur 兼容路径；可关闭以禁用私有 Accent API，不影响系统 Acrylic / Mica / MicaAlt |
 
 ¹ 如果父工程或命令行已经设置标准 `BUILD_SHARED_LIBS`，首次配置时以它作为默认值；显式设置 `FRAMELESSKIT_BUILD_SHARED_LIBS` 可独立选择本库类型，不修改父工程的选择。
 
@@ -203,20 +203,22 @@ $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
 | `Solid` | 保留应用背景，清理本模块的材质 | 恢复宿主背景，移除效果视图 | 保留应用背景 |
 | `Transparent` | DWM alpha 合成，不启用模糊 | 透明 NSWindow | 依赖 alpha 表面及窗口合成器 |
 | `Blur` | legacy Accent，需兼容开关开启 | NSVisualEffectView 原生背景模糊 | 不支持，回退 Solid |
-| `Acrylic` | build 22621+ 优先使用系统 backdrop；旧系统需 legacy Accent，最低 build 17134 | 不支持，回退 Solid | 不支持，回退 Solid |
+| `Acrylic` | Windows 11 22H2 / build 22621+ 的系统 Desktop Acrylic；旧系统与 Mica 一样回退 Solid | 不支持，回退 Solid | 不支持，回退 Solid |
 | `Mica` / `MicaAlt` | Windows 11 22H2 / build 22621+ 的系统 backdrop | 不支持，回退 Solid | 不支持，回退 Solid |
 
 - 在首次 `show()` 前绑定 Agent；QML 在自己的 Window 内声明 Agent，并在创建窗口前调用 `initialize(true)`。模块预留 alpha 表面，不会为了切换材质隐式销毁/重建已有窗口。已创建的不透明表面会明确诊断并降级。
 - Widgets 仅调整顶层背景相关属性；Quick 仅调整窗口清屏颜色。切回 Solid 或解绑时恢复本模块接管的状态，不改变业务控件的 opacity、不强制更换渲染器/Controls 样式。已有自定义 paintEvent、样式表背景或不透明 QML 面板仍可能遮挡材质。
-- Windows 保留原生 DWM 边框与阴影。现代 backdrop 优先；`FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON` 的兼容分支动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代 Mica / Acrylic / MicaAlt。
+- Windows 保留原生 DWM 边框与阴影。现代 Acrylic / Mica / MicaAlt 使用系统 backdrop；`FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON` 仅为 Blur 动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代系统 backdrop。
 - Windows 合成关闭、远程会话、高对比度或系统透明效果关闭，以及 macOS“减少透明度”，会导致非 Solid 请求降级。主题/调色板、系统策略和原生表面生命周期变化会重新应用所保留的请求。
 - `effectiveMaterial` 表示配置成功，不保证合成器此刻一定显示某种视觉效果。窗口未具备原生表面时请求保持 pending，实际配置暂为 Solid；初始化完成后自动重放。此属性不能替代实机观察。
 
-当前 Windows 10 build 19045 已运行 Widgets / Quick 的原生材质切换循环：动态版可配置 Transparent / Blur / Acrylic；Mica / MicaAlt 按版本要求回退。关闭 legacy Accent 的静态版用于检查对应降级分支。以上只验证 API 和启动/切换，不代表视觉验收；Windows 11、macOS、Linux 的材质观感尚待相应系统实机确认。
+Windows 10 build 19045 上，Widgets / Quick 的 Transparent 与 Blur 已获用户确认（2026-11-18）。按用户要求，旧系统 Acrylic 与 Mica / MicaAlt 一样回退默认 Solid，恢复宿主背景，不再使用旧 Accent Acrylic。请求仍保留，effectiveMaterial 为 Solid，并报告版本要求。Windows 11 build 22621+ 的系统 Acrylic 保留；其视觉效果仍待对应系统确认。
+
+Windows 原生 `Blur` 没有公开模糊半径、sigma 或迭代次数参数；当前采用的 Accent Blur 路径和 qwindowkit 均不提供这些参数。`Acrylic` 使用系统 Desktop Acrylic，其模糊、着色和纹理由系统控制，不公开半径参数，不将窗口全局 opacity 当作模糊强度。若需要可调半径的应用内部内容模糊，应作为独立的 UI 效果实现，不属于当前窗口材质 API。
 
 ## macOS example 验收
 
-macOS 自动选择 Cocoa 后端，Core 私有链接 AppKit，使用 Objective-C++20 / ARC；不需要应用引入原生头文件。非 Cocoa 平台插件（例如 offscreen）仍使用 Qt 回退。
+macOS 自动选择 Cocoa 后端，Core 私有链接 AppKit / QuartzCore / CoreGraphics，使用 Objective-C++20 / ARC；不需要应用引入原生头文件。非 Cocoa 平台插件（例如 offscreen）仍使用 Qt 回退。
 
 ```sh
 cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Debug \
