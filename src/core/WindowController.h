@@ -3,6 +3,8 @@
 #include "MaterialController_p.h"
 
 #include <FramelessKit/Export.h>
+#include <QHash>
+#include <QMetaObject>
 #include <memory>
 
 namespace FramelessKit::Internal
@@ -38,12 +40,22 @@ signals:
 
 private:
     void refreshMaterial();
+    void removeBinding();
+    void trackRegistration(QObject* item);
+    void untrackRegistration(QObject* item);
+    void removeDestroyedRegistration(QObject* identity);
     bool m_applyingMaterial = false;
     void report(const QString& message, bool queued = false);
     std::unique_ptr<HostAdapter> m_host;
     std::unique_ptr<PlatformBackend> m_backend;
-    HitTestModel m_hitTest;
+    HitTestModel m_hitTest{ this };
     MaterialController m_material;
+    QHash<QObject*, QMetaObject::Connection> m_registrationConnections;
+    // Identity keys only: never dereference these, including after QObject destruction.
+    QObject* m_bindingKey        = nullptr;
+    QObject* m_titleBarKey       = nullptr;
+    QObject* m_maximizeButtonKey = nullptr;
+    QMetaObject::Connection m_hostDestroyedConnection;
     QString m_lastError;
     bool m_bound = false;
 };

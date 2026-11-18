@@ -58,7 +58,7 @@ HRESULT setDarkAppearance(HWND window, BOOL dark)
 }
 QString failure(const char* operation, HRESULT result)
 {
-    return QStringLiteral("%1 failed (HRESULT 0x%2); using Solid.")
+    return QStringLiteral("%1 failed (HRESULT 0x%2).")
         .arg(QString::fromLatin1(operation), QString::number(quint32(result), 16));
 }
 #if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
@@ -153,8 +153,11 @@ bool WindowsMaterial::clear(QString& error)
             error = failure("DwmEnableBlurBehindWindow(disable)", hr);
         }
     }
-    m_applied = Material::Solid;
-    m_valid   = false;
+    // A partial clear is not Solid. Keep the last confirmed material and the
+    // failed ownership flags for retry; successful clears remain recorded above.
+    if (ok)
+        m_applied = Material::Solid;
+    m_valid = false;
     return ok;
 }
 bool WindowsMaterial::restoreDark(QString& error)
@@ -222,7 +225,7 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             !settings.value(QStringLiteral("EnableTransparency"), 1).toBool())
         {
             error = QStringLiteral("DWM material disabled by composition, remote session, high contrast or system "
-                                   "transparency policy; using Solid.");
+                                   "transparency policy.");
             return false;
         }
     }
@@ -244,9 +247,9 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
         {
             if (windowsBuild() < 22621)
             {
-                error = QStringLiteral("%1 requires Windows 11 22H2 (build 22621) or later; using Solid.")
+                error = QStringLiteral("%1 requires Windows 11 22H2 (build 22621) or later.")
                             .arg(material == Material::Acrylic ? QStringLiteral("Acrylic")
-                                                             : QStringLiteral("Mica/MicaAlt"));
+                                                               : QStringLiteral("Mica/MicaAlt"));
                 return false;
             }
             // DWMSBT_TRANSIENTWINDOW (3) is Desktop Acrylic, as in qwindowkit.
@@ -266,12 +269,12 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
 #if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
             if (windowsBuild() < 10240 || !accent(m_window, 3))
             {
-                error = QStringLiteral("Legacy Accent Blur is unavailable or rejected by Windows; using Solid.");
+                error = QStringLiteral("Legacy Accent Blur is unavailable or rejected by Windows.");
                 return false;
             }
             m_accentChanged = true;
 #else
-            error = QStringLiteral("Blur requires FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON; using Solid.");
+            error = QStringLiteral("Blur requires FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON.");
             return false;
 #endif
         }

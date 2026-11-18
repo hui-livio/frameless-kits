@@ -27,8 +27,10 @@ private:
     bool clear(QString& error);
     bool restoreDark(QString& error);
     HWND m_window      = nullptr;
+    // Last confirmed material, retained even when cleanup only partially succeeds.
     Material m_applied = Material::Solid;
     QColor m_color;
+    // False after any cleanup attempt, so a partial clear cannot hit the apply cache.
     bool m_valid           = false;
     bool m_accentChanged   = false;
     bool m_blurChanged     = false;

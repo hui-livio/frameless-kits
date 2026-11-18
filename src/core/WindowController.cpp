@@ -6,6 +6,7 @@
 #include <QLoggingCategory>
 #include <QPointer>
 #include <QTimer>
+#include <utility>
 
 Q_LOGGING_CATEGORY(fkWindow, "framelesskit.window")
 namespace FramelessKit::Internal
@@ -44,23 +45,70 @@ WindowController::WindowController(std::unique_ptr<HostAdapter> host, bool quick
         return;
     }
     bindings().insert(object, this);
-    connect(object, &QObject::destroyed, this,
-            [this, object]
-            {
-                bindings().remove(object);
-                m_bound = false;
-                m_backend.reset();
-            });
-    m_bound = true;
+    m_bindingKey              = object;
+    m_hostDestroyedConnection = connect(object, &QObject::destroyed, this,
+                                        [this]
+                                        {
+                                            removeBinding();
+                                            m_backend.reset();
+                                        });
+    m_bound                   = true;
     m_host->prepareMaterialSurface();
     m_backend = createPlatformBackend(*m_host, m_hitTest, [this](const QString& error) { report(error, true); });
     m_backend->setMaterialRefresh([this] { refreshMaterial(); });
 }
 WindowController::~WindowController()
 {
+    // Keep the registry reservation until native/background cleanup finishes.
+    // Otherwise a different Agent could bind here and have its state overwritten
+    // by the remainder of this destructor.
+    m_bound = false;
+    m_hitTest.invalidateOwner();
+    disconnect(m_hostDestroyedConnection);
+    for (const auto& connection : std::as_const(m_registrationConnections))
+        disconnect(connection);
+    m_registrationConnections.clear();
     m_backend.reset();
-    if (m_bound && m_host && bindings().value(m_host->host()) == this)
-        bindings().remove(m_host->host());
+    // Keep the model alive while host cleanup can still invoke application callbacks.
+    m_host.reset();
+    removeBinding();
+}
+void WindowController::removeBinding()
+{
+    const auto it = bindings().find(m_bindingKey);
+    if (it != bindings().end() && it.value() == this)
+        bindings().erase(it);
+    m_bindingKey = nullptr;
+    m_bound      = false;
+    m_hitTest.invalidateOwner();
+}
+void WindowController::trackRegistration(QObject* item)
+{
+    if (item && !m_registrationConnections.contains(item))
+        m_registrationConnections.insert(
+            item, connect(item, &QObject::destroyed, this, [this, item] { removeDestroyedRegistration(item); }));
+}
+void WindowController::untrackRegistration(QObject* item)
+{
+    if (item && item != m_titleBarKey && item != m_maximizeButtonKey && !m_hitTest.interactiveItems.contains(item))
+        disconnect(m_registrationConnections.take(item));
+}
+void WindowController::removeDestroyedRegistration(QObject* identity)
+{
+    disconnect(m_registrationConnections.take(identity));
+    if (m_titleBarKey == identity)
+    {
+        m_titleBarKey = nullptr;
+        m_hitTest.titleBar.clear();
+    }
+    if (m_maximizeButtonKey == identity)
+    {
+        m_maximizeButtonKey = nullptr;
+        m_hitTest.maximizeButton.clear();
+    }
+    // QPointer is already null when destroyed is delivered; prune those entries too.
+    m_hitTest.interactiveItems.removeIf([identity](const auto& item) { return !item || item.data() == identity; });
+    ++m_hitTest.revision;
 }
 void WindowController::report(const QString& message, bool queued)
 {
@@ -88,17 +136,32 @@ bool WindowController::setTitleBar(QObject* item)
 {
     if (!accepts(item))
         return false;
+    if (m_titleBarKey == item)
+        return true;
+    QObject* previous  = m_titleBarKey;
+    m_titleBarKey      = item;
     m_hitTest.titleBar = item;
+    ++m_hitTest.revision;
+    untrackRegistration(previous);
+    trackRegistration(item);
     return true;
 }
 bool WindowController::setInteractive(QObject* item, bool enabled)
 {
-    if (!accepts(item) || !item)
+    // Removing a registration remains valid after it has moved to another window.
+    if (!item || !accepts(enabled ? item : nullptr))
         return false;
     if (enabled && !m_hitTest.interactiveItems.contains(item))
+    {
         m_hitTest.interactiveItems.append(item);
-    else if (!enabled)
-        m_hitTest.interactiveItems.removeAll(item);
+        ++m_hitTest.revision;
+        trackRegistration(item);
+    }
+    else if (!enabled && m_hitTest.interactiveItems.removeAll(item))
+    {
+        ++m_hitTest.revision;
+        untrackRegistration(item);
+    }
     return true;
 }
 bool WindowController::setMaximizeButton(QObject* item)
@@ -112,10 +175,28 @@ bool WindowController::setMaximizeButton(QObject* item)
     }
     const QPointer<WindowController> guard(this);
     const QPointer<QObject> candidate(item);
-    m_backend->resetInput();
-    if (!guard || (item && !candidate))
+    const QPointer<QObject> hostObject(m_host->host());
+    const QPointer<PlatformBackend> backend(m_backend.get());
+    const QPointer<QObject> previous(m_hitTest.maximizeButton);
+    if (!backend || !hostObject)
         return false;
+    // Reserve this mutation before cancellation; a nested mutation must win, even if
+    // it ultimately restores the same button identity.
+    const quint64 revision = ++m_hitTest.revision;
+    backend->resetInput();
+    if (!guard || !hostObject || !backend || (item && !candidate))
+        return false;
+    if (!m_bound || m_backend.get() != backend || m_hitTest.revision != revision ||
+        m_hitTest.maximizeButton != previous || m_host->host() != hostObject)
+        return false;
+    if (candidate && !m_host->owns(candidate))
+        return false;
+    QObject* previousKey     = m_maximizeButtonKey;
+    m_maximizeButtonKey      = item;
     m_hitTest.maximizeButton = item;
+    ++m_hitTest.revision;
+    untrackRegistration(previousKey);
+    trackRegistration(item);
     return true;
 }
 void WindowController::setMaterial(Material material)

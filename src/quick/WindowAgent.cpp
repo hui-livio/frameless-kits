@@ -8,15 +8,73 @@
 #include <QHoverEvent>
 #include <QMouseEvent>
 #include <QPalette>
+#include <QPlatformSurfaceEvent>
 #include <QPointer>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <algorithm>
+#include <utility>
 
 namespace FramelessKit
 {
 namespace
 {
+// QQuickWindow may stop reporting alpha after its clear color becomes opaque.
+// Keep confirmed capability with the native-surface lifetime, not an Agent's
+// shorter binding lifetime. The window owns this observer, even between Agents.
+class QuickMaterialSurface final : public QObject
+{
+public:
+    explicit QuickMaterialSurface(QQuickWindow* window) : QObject(window), m_window(window)
+    {
+        window->installEventFilter(this);
+    }
+    void prepare()
+    {
+        if (!m_window)
+            return;
+        if (m_window->format().alphaBufferSize() > 0)
+            reserved = true;
+        if (m_window->handle())
+            return;
+        auto format = m_window->requestedFormat();
+        if (format.alphaBufferSize() < 8)
+        {
+            format.setAlphaBufferSize(8);
+            m_window->setFormat(format);
+        }
+        reserved = true;
+    }
+    bool available()
+    {
+        if (!m_window || !m_window->handle())
+            return false;
+        if (m_window->format().alphaBufferSize() > 0)
+            confirmed = true;
+        return reserved && confirmed;
+    }
+    void invalidate()
+    {
+        confirmed = false;
+    }
+
+protected:
+    bool eventFilter(QObject*, QEvent* event) override
+    {
+        if (event->type() == QEvent::PlatformSurface &&
+            static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType() ==
+                QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed)
+            invalidate();
+        return false;
+    }
+
+private:
+    QPointer<QQuickWindow> m_window;
+    bool reserved  = false;
+    bool confirmed = false;
+};
+
 class QuickHostAdapter final : public Internal::HostAdapter
 {
 public:
@@ -27,32 +85,30 @@ public:
     }
     bool materialSurfaceAvailable(QString& error) const override
     {
-        // QQuickWindow::setColor(opaque) may report alphaBufferSize == -1 after
-        // returning to Solid. The surface was nevertheless reserved before creation.
-        if (m_window && m_window->handle() && m_window->format().alphaBufferSize() > 0)
-            m_confirmedAlpha = true;
-        if (m_reservedAlpha && m_confirmedAlpha && m_window && m_window->handle())
+        if (m_surface && m_surface->available())
             return true;
         return HostAdapter::materialSurfaceAvailable(error);
     }
     void materialSurfaceDestroyed() override
     {
-        m_confirmedAlpha = false;
+        if (m_surface)
+            m_surface->invalidate();
     }
     void prepareMaterialSurface() override
     {
         if (!m_window)
             return;
-        m_reservedAlpha = m_window->format().alphaBufferSize() > 0;
-        if (m_window->handle())
-            return;
-        auto format = m_window->requestedFormat();
-        if (format.alphaBufferSize() < 8)
+        for (auto* child : m_window->children())
         {
-            format.setAlphaBufferSize(8);
-            m_window->setFormat(format);
+            if (auto* surface = dynamic_cast<QuickMaterialSurface*>(child))
+            {
+                m_surface = surface;
+                break;
+            }
         }
-        m_reservedAlpha = true;
+        if (!m_surface)
+            m_surface = new QuickMaterialSurface(m_window);
+        m_surface->prepare();
     }
     QColor materialColor() const override
     {
@@ -90,16 +146,37 @@ public:
 
     bool contains(const QObject* item, QPointF point) const override
     {
-        auto* quickItem = qobject_cast<const QQuickItem*>(item);
-        if (!quickItem || !owns(item) || !quickItem->isVisible() ||
-            !quickItem->contains(quickItem->mapFromScene(point)))
+        const QPointer<QQuickWindow> window = m_window;
+        const auto* quickItem               = qobject_cast<const QQuickItem*>(item);
+        if (!quickItem || !window || quickItem->window() != window)
             return false;
-        for (auto* ancestor = quickItem->parentItem(); ancestor; ancestor = ancestor->parentItem())
+        QList<QPointer<const QQuickItem>> path;
+        for (auto* ancestor = quickItem; ancestor; ancestor = ancestor->parentItem())
+            path.append(ancestor);
+        // contains() can invoke application masks. Everything used after that
+        // callback is a local guarded snapshot, even if the adapter is destroyed.
+        const auto valid = [&]
         {
-            if (!ancestor->isVisible())
+            if (!window)
                 return false;
-            if (ancestor->clip() && !ancestor->contains(ancestor->mapFromScene(point)))
-                return false;
+            for (qsizetype i = 0; i < path.size(); ++i)
+            {
+                if (!path[i] || !path[i]->isVisible() || path[i]->window() != window ||
+                    path[i]->parentItem() != (i + 1 < path.size() ? path[i + 1].data() : nullptr))
+                    return false;
+            }
+            return true;
+        };
+        if (!valid())
+            return false;
+        for (qsizetype i = 0; i < path.size(); ++i)
+        {
+            if (i == 0 || path[i]->clip())
+            {
+                const bool inside = path[i]->contains(path[i]->mapFromScene(point));
+                if (!valid() || !inside)
+                    return false;
+            }
         }
         return true;
     }
@@ -154,10 +231,9 @@ public:
 
 private:
     QPointer<QQuickWindow> m_window;
+    QPointer<QuickMaterialSurface> m_surface;
     QColor m_originalColor;
-    bool m_background             = false;
-    bool m_reservedAlpha          = false;
-    mutable bool m_confirmedAlpha = false;
+    bool m_background = false;
 };
 
 constexpr auto coreMaterial(WindowAgent::Material value)
@@ -179,19 +255,135 @@ public:
     QMetaObject::Connection titleDestroyed;
     QMetaObject::Connection buttonDestroyed;
     std::unique_ptr<Internal::WindowController> controller;
-    Material material = Material::Solid;
-    bool complete     = true;
+    Material material           = Material::Solid;
+    Material notifiedEffective  = Material::Solid;
+    quint64 bindingRevision     = 0;
+    quint64 titleRevision       = 0;
+    quint64 buttonRevision      = 0;
+    quint64 interactiveRevision = 0;
+    bool complete               = true;
+    bool destroying             = false;
+    bool bindingBusy            = false;
+    bool bindingPending         = false;
+
+    void finishBinding(WindowAgent* self)
+    {
+        bindingBusy = false;
+        if (bindingPending && !destroying)
+            self->setWindow(window);
+    }
+
+    void notifyEffective(WindowAgent* self)
+    {
+        const auto value = self->effectiveMaterial();
+        if (value == notifiedEffective)
+            return;
+        notifiedEffective = value;
+        emit self->effectiveMaterialChanged();
+    }
+    void updateInteractive(WindowAgent* self, QList<QPointer<QQuickItem>> candidates);
 };
+
+void WindowAgent::Private::updateInteractive(WindowAgent* self, QList<QPointer<QQuickItem>> candidates)
+{
+    if (destroying)
+        return;
+    const QPointer<WindowAgent> guard(self);
+    const QPointer<Internal::WindowController> bound(controller.get());
+    const quint64 binding  = bindingRevision;
+    const quint64 revision = ++interactiveRevision;
+    const auto valid       = [&]
+    {
+        return guard && !guard->d->destroying && guard->d->bindingRevision == binding &&
+               guard->d->interactiveRevision == revision && guard->d->controller.get() == bound;
+    };
+    QList<QPointer<QQuickItem>> next;
+    const auto previous = interactive;
+    for (const auto& item : candidates)
+    {
+        if (!item || next.contains(item))
+            continue;
+        // Existing foreign registrations can always be removed; ownership is
+        // checked only when adding an item, before changing either list.
+        if (bound && !previous.contains(item))
+        {
+            const bool accepted = bound->accepts(item);
+            if (!valid() || !accepted || !item)
+                return;
+        }
+        next.append(item);
+    }
+    if (next == previous)
+        return;
+    if (bound)
+    {
+        for (const auto& item : previous)
+            if (item && !next.contains(item))
+            {
+                bound->setInteractive(item, false);
+                if (!valid())
+                    return;
+            }
+        for (const auto& item : next)
+            if (item && !previous.contains(item))
+            {
+                const bool accepted = bound->setInteractive(item, true);
+                if (!valid() || !accepted)
+                    return;
+            }
+    }
+    for (const auto& item : previous)
+        if (item && !next.contains(item))
+            QObject::disconnect(interactiveDestroyed.take(item));
+    interactive = std::move(next);
+    for (const auto& item : std::as_const(interactive))
+        if (item && !interactiveDestroyed.contains(item))
+        {
+            auto* key = item.data();
+            interactiveDestroyed.insert(key, QObject::connect(key, &QObject::destroyed, self,
+                                                              [self, key]
+                                                              {
+                                                                  self->d->interactiveDestroyed.remove(key);
+                                                                  if (self->d->interactive.removeAll(nullptr))
+                                                                  {
+                                                                      ++self->d->interactiveRevision;
+                                                                      if (!self->d->destroying)
+                                                                          emit self->interactiveItemsChanged();
+                                                                  }
+                                                              }));
+        }
+    // One atomic list mutation, then one callback boundary. Nothing accesses
+    // this Private or the list again after the notification.
+    emit self->interactiveItemsChanged();
+}
+
 WindowAgent::WindowAgent(QObject* parent) : QObject(parent), d(std::make_unique<Private>()) {}
-WindowAgent::~WindowAgent() = default;
+WindowAgent::~WindowAgent()
+{
+    d->destroying = true;
+    ++d->bindingRevision;
+    disconnect(d->windowDestroyed);
+    disconnect(d->titleDestroyed);
+    disconnect(d->buttonDestroyed);
+    for (const auto& connection : std::as_const(d->interactiveDestroyed))
+        disconnect(connection);
+    auto retired = std::move(d->controller);
+    if (retired)
+        disconnect(retired.get(), nullptr, this, nullptr);
+    retired.reset();
+}
 
 void WindowAgent::classBegin()
 {
+    if (d->destroying)
+        return;
     d->complete = false;
 }
 
 void WindowAgent::componentComplete()
 {
+    if (d->destroying)
+        return;
     d->complete = true;
     bindWindow();
 }
@@ -203,54 +395,136 @@ QQuickWindow* WindowAgent::window() const
 
 void WindowAgent::setWindow(QQuickWindow* value)
 {
-    if (!Internal::checkGuiThread("WindowAgent::setWindow") || d->window == value)
+    if (!Internal::checkGuiThread("WindowAgent::setWindow") || d->destroying ||
+        (!d->bindingPending && d->window == value && (value || (!d->controller && !d->windowDestroyed))))
         return;
-    disconnect(d->windowDestroyed);
-    d->controller.reset();
-    d->window = value;
-    if (value)
+    if (d->bindingBusy)
     {
-        d->windowDestroyed = connect(value, &QObject::destroyed, this,
-                                     [this]
+        d->window = value;
+        ++d->bindingRevision;
+        d->bindingPending = true;
+        return;
+    }
+    const QPointer<WindowAgent> guard(this);
+    d->bindingBusy    = true;
+    d->bindingPending = false;
+    const auto finish = qScopeGuard(
+        [guard]
+        {
+            if (guard)
+                guard->d->finishBinding(guard);
+        });
+    const QPointer<QQuickWindow> target(value);
+    const quint64 revision = ++d->bindingRevision;
+    disconnect(d->windowDestroyed);
+    d->windowDestroyed = {};
+    d->window          = target;
+    // Detach ownership first: restoring the old host color can synchronously
+    // delete this Agent or request a different window.
+    auto retired       = std::move(d->controller);
+    if (retired)
+        disconnect(retired.get(), nullptr, this, nullptr);
+    retired.reset();
+    const auto valid = [&] { return guard && !guard->d->destroying && guard->d->bindingRevision == revision; };
+    if (!valid())
+        return;
+    if (d->window)
+    {
+        d->windowDestroyed = connect(d->window, &QObject::destroyed, this,
+                                     [this, revision]
                                      {
-                                         d->controller.reset();
-                                         emit windowChanged();
+                                         if (!d->destroying && d->bindingRevision == revision)
+                                             setWindow(nullptr);
                                      });
     }
+    d->notifyEffective(this);
+    if (!valid())
+        return;
     if (d->complete)
         bindWindow();
-    emit windowChanged();
+    if (valid())
+        emit windowChanged();
 }
 
 void WindowAgent::bindWindow()
 {
-    d->controller.reset();
-    if (!d->window)
+    if (d->destroying || !d->window || d->controller)
         return;
-    d->controller = std::make_unique<Internal::WindowController>(std::make_unique<QuickHostAdapter>(d->window), true);
+    const QPointer<WindowAgent> guard(this);
+    const bool ownsOperation = !d->bindingBusy;
+    d->bindingBusy           = true;
+    const auto finish        = qScopeGuard(
+        [guard, ownsOperation]
+        {
+            if (guard && ownsOperation)
+                guard->d->finishBinding(guard);
+        });
+    const QPointer<QQuickWindow> target(d->window);
+    const quint64 revision = d->bindingRevision;
+    auto created = std::make_unique<Internal::WindowController>(std::make_unique<QuickHostAdapter>(target), true);
+    if (!guard || d->destroying || d->bindingRevision != revision || !target || d->window != target)
+        return;
+    d->controller = std::move(created);
+    const QPointer<Internal::WindowController> controller(d->controller.get());
+    const auto valid = [&]
+    {
+        return guard && !guard->d->destroying && guard->d->bindingRevision == revision && controller &&
+               guard->d->controller.get() == controller && target && guard->d->window == target;
+    };
     connect(d->controller.get(), &Internal::WindowController::effectiveMaterialChanged, this,
-            &WindowAgent::effectiveMaterialChanged);
+            [this, controller, revision]
+            {
+                if (!d->destroying && d->bindingRevision == revision && d->controller.get() == controller)
+                    d->notifyEffective(this);
+            });
     connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &WindowAgent::errorOccurred);
     if (!d->controller->isBound())
         return;
-    if (!d->controller->setTitleBar(d->titleBar) && d->titleBar)
+    const auto title         = d->titleBar;
+    const bool titleAccepted = controller->setTitleBar(title);
+    if (!valid())
+        return;
+    if (!titleAccepted && title && d->titleBar == title)
     {
-        d->titleBar = nullptr;
-        emit titleBarChanged();
+        setTitleBar(nullptr);
+        if (!valid())
+            return;
     }
-    if (!d->controller->setMaximizeButton(d->maximizeButton) && d->maximizeButton)
+    const auto button         = d->maximizeButton;
+    const bool buttonAccepted = controller->setMaximizeButton(button);
+    if (!valid())
+        return;
+    if (!buttonAccepted && button && d->maximizeButton == button)
     {
-        d->maximizeButton = nullptr;
-        emit maximizeButtonChanged();
+        setMaximizeButton(nullptr);
+        if (!valid())
+            return;
     }
-    for (auto it = d->interactive.begin(); it != d->interactive.end();)
+    const auto items = d->interactive;
+    bool pruned      = false;
+    for (const auto& item : items)
     {
-        if (!*it || !d->controller->setInteractive(*it, true))
-            it = d->interactive.erase(it);
-        else
-            ++it;
+        if (!item || !d->interactive.contains(item))
+            continue;
+        const bool accepted = controller->setInteractive(item, true);
+        if (!valid())
+            return;
+        if (!accepted && d->interactive.removeAll(item))
+        {
+            disconnect(d->interactiveDestroyed.take(item));
+            ++d->interactiveRevision;
+            pruned = true;
+        }
     }
-    d->controller->setMaterial(coreMaterial(d->material));
+    if (pruned)
+    {
+        emit interactiveItemsChanged();
+        if (!valid())
+            return;
+    }
+    controller->setMaterial(coreMaterial(d->material));
+    if (valid())
+        d->notifyEffective(this);
 }
 
 QQuickItem* WindowAgent::titleBar() const
@@ -260,14 +534,26 @@ QQuickItem* WindowAgent::titleBar() const
 
 void WindowAgent::setTitleBar(QQuickItem* item)
 {
-    if (!Internal::checkGuiThread("WindowAgent::setTitleBar") || d->titleBar == item)
+    if (!Internal::checkGuiThread("WindowAgent::setTitleBar") || d->destroying || d->titleBar == item)
         return;
-    if (d->complete && d->controller && !d->controller->setTitleBar(item))
+    const QPointer<WindowAgent> guard(this);
+    const QPointer<QQuickItem> candidate(item);
+    const quint64 binding  = d->bindingRevision;
+    const quint64 revision = ++d->titleRevision;
+    const bool accepted    = !d->complete || !d->controller || d->controller->setTitleBar(item);
+    if (!guard || d->destroying || d->bindingRevision != binding || d->titleRevision != revision || !accepted ||
+        (item && !candidate))
         return;
     disconnect(d->titleDestroyed);
     d->titleBar = item;
     if (item)
-        d->titleDestroyed = connect(item, &QObject::destroyed, this, [this] { emit titleBarChanged(); });
+        d->titleDestroyed = connect(item, &QObject::destroyed, this,
+                                    [this]
+                                    {
+                                        ++d->titleRevision;
+                                        if (!d->destroying)
+                                            emit titleBarChanged();
+                                    });
     emit titleBarChanged();
 }
 
@@ -279,16 +565,25 @@ QQuickItem* WindowAgent::maximizeButton() const
 void WindowAgent::setMaximizeButton(QQuickItem* item)
 {
     const QPointer<WindowAgent> guard(this);
-    if (!Internal::checkGuiThread("WindowAgent::setMaximizeButton") || d->maximizeButton == item)
+    if (!Internal::checkGuiThread("WindowAgent::setMaximizeButton") || d->destroying || d->maximizeButton == item)
         return;
-    if (d->complete && d->controller && !d->controller->setMaximizeButton(item))
-        return;
-    if (!guard)
+    const QPointer<QQuickItem> candidate(item);
+    const quint64 binding  = d->bindingRevision;
+    const quint64 revision = ++d->buttonRevision;
+    const bool accepted    = !d->complete || !d->controller || d->controller->setMaximizeButton(item);
+    if (!guard || d->destroying || d->bindingRevision != binding || d->buttonRevision != revision || !accepted ||
+        (item && !candidate))
         return;
     disconnect(d->buttonDestroyed);
     d->maximizeButton = item;
     if (item)
-        d->buttonDestroyed = connect(item, &QObject::destroyed, this, [this] { emit maximizeButtonChanged(); });
+        d->buttonDestroyed = connect(item, &QObject::destroyed, this,
+                                     [this]
+                                     {
+                                         ++d->buttonRevision;
+                                         if (!d->destroying)
+                                             emit maximizeButtonChanged();
+                                     });
     emit maximizeButtonChanged();
 }
 
@@ -307,22 +602,13 @@ QQmlListProperty<QQuickItem> WindowAgent::interactiveItems()
 void WindowAgent::appendInteractiveItem(QQmlListProperty<QQuickItem>* list, QQuickItem* item)
 {
     auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || !item)
-        return;
-    if (self->d->complete && self->d->controller && !self->d->controller->setInteractive(item, true))
+    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying || !item)
         return;
     if (self->d->interactive.contains(item))
         return;
-    self->d->interactive.append(item);
-    self->d->interactiveDestroyed.insert(item, connect(item, &QObject::destroyed, self,
-                                                       [self, item]
-                                                       {
-                                                           self->d->interactiveDestroyed.remove(item);
-                                                           const auto removed = self->d->interactive.removeAll(nullptr);
-                                                           if (removed)
-                                                               emit self->interactiveItemsChanged();
-                                                       }));
-    emit self->interactiveItemsChanged();
+    auto entries = self->d->interactive;
+    entries.append(item);
+    self->d->updateInteractive(self, std::move(entries));
 }
 
 qsizetype WindowAgent::interactiveCount(QQmlListProperty<QQuickItem>* list)
@@ -338,48 +624,31 @@ QQuickItem* WindowAgent::interactiveAt(QQmlListProperty<QQuickItem>* list, qsize
 void WindowAgent::clearInteractiveItems(QQmlListProperty<QQuickItem>* list)
 {
     auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->interactive.isEmpty())
+    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying)
         return;
-    if (self->d->controller)
-    {
-        for (const auto& item : self->d->interactive)
-            if (item)
-                self->d->controller->setInteractive(item, false);
-    }
-    for (const auto& connection : self->d->interactiveDestroyed)
-        disconnect(connection);
-    self->d->interactiveDestroyed.clear();
-    self->d->interactive.clear();
-    emit self->interactiveItemsChanged();
+    self->d->updateInteractive(self, {});
 }
 
 void WindowAgent::replaceInteractiveItem(QQmlListProperty<QQuickItem>* list, qsizetype index, QQuickItem* item)
 {
     auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || !item || index < 0 ||
+    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying || !item || index < 0 ||
         index >= self->d->interactive.size())
-        return;
-    if (self->d->controller && !self->d->controller->accepts(item))
         return;
     auto entries   = self->d->interactive;
     entries[index] = item;
-    clearInteractiveItems(list);
-    for (const auto& entry : entries)
-        if (entry)
-            appendInteractiveItem(list, entry);
+    self->d->updateInteractive(self, std::move(entries));
 }
 
 void WindowAgent::removeLastInteractiveItem(QQmlListProperty<QQuickItem>* list)
 {
     auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->interactive.isEmpty())
+    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying ||
+        self->d->interactive.isEmpty())
         return;
-    const auto item = self->d->interactive.takeLast();
-    if (item)
-        disconnect(self->d->interactiveDestroyed.take(item));
-    if (self->d->controller && item)
-        self->d->controller->setInteractive(item, false);
-    emit self->interactiveItemsChanged();
+    auto entries = self->d->interactive;
+    entries.removeLast();
+    self->d->updateInteractive(self, std::move(entries));
 }
 
 WindowAgent::Material WindowAgent::material() const
@@ -394,7 +663,7 @@ WindowAgent::Material WindowAgent::effectiveMaterial() const
 
 void WindowAgent::setMaterial(Material value)
 {
-    if (!Internal::checkGuiThread("WindowAgent::setMaterial") || d->material == value)
+    if (!Internal::checkGuiThread("WindowAgent::setMaterial") || d->destroying || d->material == value)
         return;
     if (int(value) < int(Material::Solid) || int(value) > int(Material::MicaAlt))
     {

@@ -41,6 +41,15 @@ Widgets Agent 以宿主为 QObject 父对象，PIMPL 拥有 Controller。QML Age
 
 Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用时重建绑定；generation 用于拒绝过期的原生回调。Cocoa 通过 NSView.window 观察器跟踪 NSWindow 变化，对绑定对象安装独立的运行时子类以维持标题栏设置；不替换 Qt 的窗口 delegate，也不修改未绑定窗口的类。解除绑定时移除观察器、清理关联状态并恢复模块管理的原生属性。模块仍按进程生命周期加载，不支持任意热卸载。材质请求在新表面/新原生窗口就绪后重放；主题、调色板和系统透明策略变化触发重新配置。Quick 对已确认的 alpha 状态按表面生命周期失效，避免把旧表面的能力误用于新表面。
 
+## 重要审查修复（2026-11-18）
+
+- 重要审查修复：Quick 换绑按操作版本串行执行；同步回调中的新请求在当前清理/创建结束后重放，旧操作不再覆盖新窗口。绑定表保存原始身份键，宿主 QPointer 清空后也能正确注销；旧 Controller 完成清理前保留注册占用。
+- 命中测试保存弱引用快照与注册版本，Quick containment mask 修改对象、注册或绑定后立即放弃本次命中。交互对象销毁时由 Core 清理注册，跨窗口后仍可主动移除。
+- Quick 列表替换先一次性更新配置，再发送通知；解绑和宿主销毁补齐 effectiveMaterial 通知，换绑剪除交互项时同步断开旧连接并通知列表变化。
+- Quick 已确认的 alpha 表面能力由窗口拥有的内部观察器记录，Agent 解绑后仍保留同一表面的确认结果；表面销毁时立即失效。避免恢复不透明背景后 Qt 报告 alpha 未指定，使随后重新绑定误降级；不因此重建表面。
+- 材质清理失败保留上一次确认配置及待清理标记，只有 fallback 成功才更新为 Solid。此异常分支做了源码复核，未模拟原生 API 故障。默认成功路径和材质循环已通过 example 检查。
+- QWidget 能力按其规范化 flags 判断，尊重显式禁用最大化；QWindow 的默认 flags 解释保持独立。安装包的 OPTIONAL_COMPONENTS 缺依赖时只标记对应组件不可用。
+
 ## 待验证与后续工作
 
 - Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC、AppKit、QuartzCore 与 CoreGraphics；尚无 Mac 编译与 example 运行证据。

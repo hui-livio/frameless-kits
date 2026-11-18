@@ -479,12 +479,17 @@ private:
     }
     void trackHover(POINT screen)
     {
-        QPointer<QObject> target = hitTest(screen) == HTMAXBUTTON ? m_hitTest.maximizeButton : nullptr;
+        const QPointer<WindowsBackend> guard(this);
+        const HWND hwnd = m_hwnd;
+        const quint64 generation = m_generation;
+        const int region = hitTest(screen);
+        if (!guard || guard->m_hwnd != hwnd || guard->m_generation != generation)
+            return;
+        QPointer<QObject> target = region == HTMAXBUTTON ? m_hitTest.maximizeButton : nullptr;
         if (m_button != target)
         {
-            QPointer<WindowsBackend> guard(this);
             resetInput();
-            if (!guard)
+            if (!guard || guard->m_hwnd != hwnd || guard->m_generation != generation)
                 return;
             m_button = target;
             if (target)
@@ -612,7 +617,11 @@ private:
                 if (!guard)
                     return true;
                 const POINT point = screenPoint(message, lParam);
-                if (hitTest(point) != HTMAXBUTTON)
+                const HWND hitWindow = m_hwnd;
+                const quint64 hitGeneration = m_generation;
+                const int region = hitTest(point);
+                if (!guard || guard->m_hwnd != hitWindow || guard->m_generation != hitGeneration ||
+                    region != HTMAXBUTTON)
                     return true;
                 m_button  = m_hitTest.maximizeButton;
                 m_pressed = true;

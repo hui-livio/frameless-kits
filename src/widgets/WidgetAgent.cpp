@@ -115,6 +115,10 @@ public:
     {
         return m_root ? m_root->windowFlags() : Qt::WindowFlags{};
     }
+    bool windowCapability(Qt::WindowType hint) const override
+    {
+        return flags().testFlag(hint);
+    }
 
     Qt::WindowStates states() const override
     {

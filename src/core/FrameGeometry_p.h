@@ -5,7 +5,7 @@ namespace FramelessKit::Internal
 {
 inline bool windowCapability(const HostAdapter& host, Qt::WindowType hint)
 {
-    return !host.flags().testFlag(Qt::CustomizeWindowHint) || host.flags().testFlag(hint);
+    return host.windowCapability(hint);
 }
 inline bool canResizeWidth(const HostAdapter& host)
 {

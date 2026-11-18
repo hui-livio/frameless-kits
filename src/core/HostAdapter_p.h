@@ -24,6 +24,12 @@ public:
     {
         return window() ? window()->flags() : Qt::WindowFlags{};
     }
+    virtual bool windowCapability(Qt::WindowType hint) const
+    {
+        // QWindow defaults can omit individual caption hints. Widgets exposes
+        // normalized flags and overrides this to preserve explicit opt-outs.
+        return !flags().testFlag(Qt::CustomizeWindowHint) || flags().testFlag(hint);
+    }
     virtual Qt::WindowStates states() const
     {
         return window() ? window()->windowStates() : Qt::WindowStates{};

@@ -4,8 +4,8 @@
 
 namespace FramelessKit::Internal
 {
-// Requests survive unavailable/recreated surfaces. Applied means configured,
-// not a guarantee that the compositor currently displays a particular effect.
+// Requests survive unavailable/recreated surfaces. Applied records the last
+// confirmed configuration, not a guarantee of the currently displayed effect.
 class MaterialController
 {
 public:
@@ -17,15 +17,21 @@ public:
     {
         pending                  = false;
         const Material candidate = requested;
-        if (candidate != Material::Solid && !backend.materialReady())
+        const QPointer<PlatformBackend> lifetime(&backend);
+        const bool ready = candidate == Material::Solid || backend.materialReady();
+        if (!lifetime)
+            return true;
+        if (!ready)
         {
             pending = true;
-            applied = Material::Solid;
-            host.setMaterialBackground(false);
+            // Unavailability alone does not confirm that native cleanup succeeded.
+            host.setMaterialBackground(applied != Material::Solid);
             return true;
         }
-        const QPointer<PlatformBackend> lifetime(&backend);
-        if (candidate == Material::Solid || host.materialSurfaceAvailable(error))
+        const bool surfaceAvailable = candidate == Material::Solid || host.materialSurfaceAvailable(error);
+        if (!lifetime)
+            return true;
+        if (surfaceAvailable)
         {
             if (candidate != Material::Solid)
             {
@@ -47,13 +53,19 @@ public:
             }
         }
         QString fallbackError;
-        backend.applyMaterial(Material::Solid, fallbackError);
+        const bool cleared = backend.applyMaterial(Material::Solid, fallbackError);
         if (!lifetime)
             return false;
-        applied = Material::Solid;
+        if (cleared)
+            applied = Material::Solid;
+        else if (fallbackError.isEmpty())
+            fallbackError = QStringLiteral("Cannot clear the previous native material.");
+        if (error.isEmpty())
+            error = QStringLiteral("Cannot apply the requested material.");
         if (!fallbackError.isEmpty())
             error += QStringLiteral(" Fallback cleanup: ") + fallbackError;
-        host.setMaterialBackground(false);
+        // Failed cleanup retains the last confirmed material and its host background.
+        host.setMaterialBackground(applied != Material::Solid);
         return false;
     }
 };
