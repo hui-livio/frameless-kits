@@ -1,15 +1,14 @@
 #include "../core/Runtime_p.h"
-#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
 #include <WindowHeler/MaterialAgent.h>
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QPlatformSurfaceEvent>
 #include <QPointer>
 #include <QPalette>
 #include <QQuickItem>
 #include <QQuickWindow>
-#include <QScopeGuard>
 #include <utility>
 
 namespace WindowHeler
@@ -237,15 +236,21 @@ class MaterialAgent::Private
 {
 public:
     QPointer<QQuickWindow> window;
-    std::unique_ptr<Internal::WindowController> controller;
-    Internal::WindowContextHandle* context = nullptr;
+    std::shared_ptr<Internal::WindowController> controller;
+    QMetaObject::Connection windowDestroyed;
+    Material requested = Material::Solid;
+    quint64 bindingRevision = 0;
+    bool destroying = false;
 };
 
 MaterialAgent::MaterialAgent(QObject* parent) : QObject(parent), d(std::make_unique<Private>()) {}
 MaterialAgent::~MaterialAgent()
 {
-    Internal::windowheler_release_capability(d->context, Internal::Capability::Material);
-    Internal::windowheler_release_context(d->context);
+    d->destroying = true;
+    disconnect(d->windowDestroyed);
+    if (d->controller)
+        disconnect(d->controller.get(), nullptr, this, nullptr);
+    d->controller.reset();
 }
 QQuickWindow* MaterialAgent::window() const
 {
@@ -253,28 +258,45 @@ QQuickWindow* MaterialAgent::window() const
 }
 void MaterialAgent::setWindow(QQuickWindow* value)
 {
-    if (d->window == value && d->controller)
+    if (!Internal::checkGuiThread("MaterialAgent::setWindow") || d->destroying ||
+        (d->window == value && (value || !d->controller)))
         return;
-    d->controller.reset();
-    Internal::windowheler_release_capability(d->context, Internal::Capability::Material);
-    Internal::windowheler_release_context(d->context);
-    d->context = nullptr;
-    d->window = value;
-    if (value)
+    const QPointer<MaterialAgent> guard(this);
+    const QPointer<QQuickWindow> target(value);
+    const auto previous = effectiveMaterial();
+    const auto revision = ++d->bindingRevision;
+    const auto current = [&] { return guard && guard->d->bindingRevision == revision; };
+    disconnect(d->windowDestroyed);
+    d->window = target;
+    auto retired = std::move(d->controller);
+    if (retired)
+        disconnect(retired.get(), nullptr, this, nullptr);
+    retired.reset();
+    if (!current())
+        return;
+    if (target)
     {
-        d->controller = std::make_unique<Internal::WindowController>(std::make_unique<QuickHostAdapter>(value), true);
-        d->context = Internal::windowheler_acquire_context(value);
-        Internal::windowheler_retain_capability(d->context, Internal::Capability::Material);
+        auto controller = Internal::WindowController::acquire(std::make_unique<QuickHostAdapter>(target), true,
+                                                               Internal::Capability::Material);
+        if (!current() || !target)
+            return;
+        d->controller = std::move(controller);
+        d->windowDestroyed = connect(target, &QObject::destroyed, this, [this] { setWindow(nullptr); });
+        connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &MaterialAgent::errorOccurred);
+        d->controller->setMaterial(static_cast<WindowHeler::Material>(d->requested));
+        if (!current())
+            return;
         connect(d->controller.get(), &Internal::WindowController::effectiveMaterialChanged, this,
                 &MaterialAgent::effectiveMaterialChanged);
-        connect(d->controller.get(), &Internal::WindowController::errorOccurred, this,
-                &MaterialAgent::errorOccurred);
     }
-    emit windowChanged();
+    if (previous != effectiveMaterial())
+        emit effectiveMaterialChanged();
+    if (current())
+        emit windowChanged();
 }
 MaterialAgent::Material MaterialAgent::material() const
 {
-    return static_cast<Material>(d->controller ? d->controller->material() : WindowHeler::Material::Solid);
+    return d->requested;
 }
 MaterialAgent::Material MaterialAgent::effectiveMaterial() const
 {
@@ -282,11 +304,18 @@ MaterialAgent::Material MaterialAgent::effectiveMaterial() const
 }
 void MaterialAgent::setMaterial(Material value)
 {
-    if (!d->controller)
+    if (!Internal::checkGuiThread("MaterialAgent::setMaterial") || d->destroying)
         return;
-    const auto previous = material();
-    d->controller->setMaterial(static_cast<WindowHeler::Material>(value));
-    if (previous != material())
+    if (int(value) < int(Material::Solid) || int(value) > int(Material::MicaAlt))
+    {
+        emit errorOccurred(QStringLiteral("Invalid material value."));
+        return;
+    }
+    const QPointer<MaterialAgent> guard(this);
+    const auto previous = std::exchange(d->requested, value);
+    if (d->controller)
+        d->controller->setMaterial(static_cast<WindowHeler::Material>(value));
+    if (guard && previous != value && d->requested == value)
         emit materialChanged();
 }
 } // namespace WindowHeler

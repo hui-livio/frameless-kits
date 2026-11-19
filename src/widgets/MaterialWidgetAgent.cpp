@@ -1,5 +1,4 @@
 #include "../core/Runtime_p.h"
-#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
 #include <WindowHeler/MaterialWidgetAgent.h>
@@ -220,46 +219,42 @@ private:
 class MaterialWidgetAgent::Private
 {
 public:
-    explicit Private(QWidget* host) : window(host), controller(std::make_unique<WidgetHostAdapter>(host), false)
-    {
-        context = Internal::windowheler_acquire_context(host);
-        Internal::windowheler_retain_capability(context, Internal::Capability::Material);
-    }
-    ~Private()
-    {
-        Internal::windowheler_release_capability(context, Internal::Capability::Material);
-        Internal::windowheler_release_context(context);
-    }
+    explicit Private(QWidget* host)
+        : window(host), controller(Internal::WindowController::acquire(std::make_unique<WidgetHostAdapter>(host), false,
+                                                                      Internal::Capability::Material))
+    {}
     QPointer<QWidget> window;
-    Internal::WindowController controller;
-    Internal::WindowContextHandle* context = nullptr;
+    std::shared_ptr<Internal::WindowController> controller;
 };
 
 MaterialWidgetAgent::MaterialWidgetAgent(QWidget* window) : QObject(window), d(new Private(window))
 {
-    connect(&d->controller, &Internal::WindowController::effectiveMaterialChanged, this,
+    connect(d->controller.get(), &Internal::WindowController::effectiveMaterialChanged, this,
             &MaterialWidgetAgent::effectiveMaterialChanged);
-    connect(&d->controller, &Internal::WindowController::errorOccurred, this, &MaterialWidgetAgent::errorOccurred);
+    connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &MaterialWidgetAgent::errorOccurred);
 }
 
-MaterialWidgetAgent::~MaterialWidgetAgent() = default;
+MaterialWidgetAgent::~MaterialWidgetAgent()
+{
+    disconnect(d->controller.get(), nullptr, this, nullptr);
+}
 QWidget* MaterialWidgetAgent::window() const
 {
     return d->window;
 }
 Material MaterialWidgetAgent::material() const
 {
-    return d->controller.material();
+    return d->controller->material();
 }
 Material MaterialWidgetAgent::effectiveMaterial() const
 {
-    return d->controller.effectiveMaterial();
+    return d->controller->effectiveMaterial();
 }
 void MaterialWidgetAgent::setMaterial(Material value)
 {
     const QPointer<MaterialWidgetAgent> guard(this);
     const auto previous = material();
-    d->controller.setMaterial(value);
+    d->controller->setMaterial(value);
     if (guard && previous != material())
         emit materialChanged();
 }

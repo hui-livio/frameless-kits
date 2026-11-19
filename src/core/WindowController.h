@@ -10,11 +10,15 @@
 namespace WindowHeler::Internal
 {
 // Private cross-library ABI, never installed as a public application header.
-class WINDOWHELER_RUNTIME_EXPORT WindowController final : public QObject
+enum class Capability : quint8 { Frameless = 1, Material = 2 };
+
+class WINDOWHELER_RUNTIME_EXPORT WindowController final : public QObject,
+                                                          public std::enable_shared_from_this<WindowController>
 {
     Q_OBJECT
 public:
-    explicit WindowController(std::unique_ptr<HostAdapter> host, bool quick, QObject* parent = nullptr);
+    static std::shared_ptr<WindowController> acquire(std::unique_ptr<HostAdapter> host, bool quick,
+                                                      Capability capability);
     ~WindowController() override;
     bool isBound() const
     {
@@ -39,6 +43,10 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    explicit WindowController(std::unique_ptr<HostAdapter> host);
+    void attach(QObject* object);
+    void release(Capability capability);
+    void clearRegistrations();
     void refreshMaterial();
     void removeBinding();
     void trackRegistration(QObject* item);
@@ -57,6 +65,7 @@ private:
     QObject* m_maximizeButtonKey = nullptr;
     QMetaObject::Connection m_hostDestroyedConnection;
     QString m_lastError;
+    quint8 m_capabilities = 0;
     bool m_bound = false;
 };
 } // namespace WindowHeler::Internal

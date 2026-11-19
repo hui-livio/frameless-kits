@@ -9,6 +9,7 @@
 #include <QPointer>
 #include <QTimer>
 #include <QWindow>
+#include <utility>
 // Windows declarations must precede commctrl; alphabetical include sorting breaks the SDK headers.
 // clang-format off
 #include <qt_windows.h>
@@ -85,7 +86,7 @@ public:
     bool nativeEventFilter(const QByteArray&, void* message, qintptr* result) override
     {
         const auto* msg = static_cast<const MSG*>(message);
-        if (!m_hwnd || msg->hwnd != m_hwnd || msg->message != WM_NCCALCSIZE)
+        if (!m_framelessEnabled || !m_hwnd || msg->hwnd != m_hwnd || msg->message != WM_NCCALCSIZE)
             return false;
         // Our Qt 6.8+ baseline captures the original RECT before native filters and
         // derives its margins from the final RECT afterwards. Adjust here, not
@@ -186,9 +187,23 @@ protected:
             if (windowCapability(m_host, Qt::WindowMinimizeButtonHint))
                 desired |= WS_MINIMIZEBOX;
         }
-        m_appliedStyle   = (previous & ~frameStyleMask) | desired;
+        const bool frameChanged = m_nativeFrameApplied != m_framelessEnabled;
+        if (m_framelessEnabled)
+        {
+            if (frameChanged)
+                m_originalStyle = previous;
+            m_appliedStyle = (previous & ~frameStyleMask) | desired;
+        }
+        else if (frameChanged)
+        {
+            const auto owned = (m_originalStyle ^ m_appliedStyle) & frameStyleMask & ~(previous ^ m_appliedStyle);
+            m_appliedStyle = (previous & ~owned) | (m_originalStyle & owned);
+        }
+        else
+            m_appliedStyle = previous;
+        m_nativeFrameApplied = m_framelessEnabled;
         const auto state = m_host.states();
-        if (newBinding || previous != m_appliedStyle || state != m_lastState)
+        if (frameChanged || (m_framelessEnabled && (previous != m_appliedStyle || state != m_lastState)))
         {
             RECT clientBefore{}; GetClientRect(m_hwnd, &clientBefore);
             POINT originBefore{}; ClientToScreen(m_hwnd, &originBefore);
@@ -220,6 +235,7 @@ protected:
         m_materialSurfaceRefreshed      = false;
         m_materialSurfaceRefreshPending = false;
         m_hwnd                          = nullptr;
+        const bool hadNativeFrame = std::exchange(m_nativeFrameApplied, false);
         const quint64 generation = ++m_generation;
         // Detach before callbacks. A nested synchronization can then create a
         // fresh binding without recursing into cleanup of this same binding.
@@ -247,6 +263,8 @@ protected:
                     &currentPolicy, sizeof(currentPolicy))) && currentPolicy == DWMNCRP_ENABLED)
                 DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, &originalPolicy, sizeof(originalPolicy));
             MARGINS margins{}; DwmExtendFrameIntoClientArea(hwnd, &margins);
+            if (!hadNativeFrame)
+                return;
             const auto current = GetWindowLongPtrW(hwnd, GWL_STYLE);
             // Restore only bits we actually changed and which still match our last write.
             const auto owned   = (originalStyle ^ appliedStyle) & frameStyleMask & ~(current ^ appliedStyle);
@@ -286,7 +304,7 @@ private:
         // Both of our hosts reserve alpha even for Solid; extending the whole
         // inactive caption exposes a dark caption band on these alpha surfaces.
         MARGINS margins{};
-        if (!WindowsMaterial::usesSystemBackdrop(material) && !m_host.fullScreen() &&
+        if (m_framelessEnabled && !WindowsMaterial::usesSystemBackdrop(material) && !m_host.fullScreen() &&
             !IsZoomed(m_hwnd) && !isWindows11())
             margins.cyTopHeight = 1;
         // Extend from the left only: negative/full top margins can resurrect the
@@ -410,21 +428,28 @@ private:
             return HTCLIENT;
         POINT client = screen;
         ScreenToClient(m_hwnd, &client);
-        RECT outer{}; GetWindowRect(m_hwnd, &outer);
-        if (!IsZoomed(m_hwnd))
+        if (!IsZoomed(m_hwnd) && !m_host.states().testFlag(Qt::WindowMaximized))
         {
-            const auto nativeEdges = resizeEdges({qreal(screen.x - outer.left), qreal(screen.y - outer.top)},
-                {qreal(outer.right - outer.left), qreal(outer.bottom - outer.top)}, border(),
-                canResizeWidth(m_host), canResizeHeight(m_host), false, false);
-            if (nativeEdges) return edgeHit(nativeEdges);
+            const auto thickness = border();
+            const bool horizontal = canResizeWidth(m_host), vertical = canResizeHeight(m_host);
+            RECT outer{}, rect{};
+            GetWindowRect(m_hwnd, &outer);
+            GetClientRect(m_hwnd, &rect);
+            // Include both the visible native frame and its adjacent Qt client strip.
+            // The native frame can contribute just Top at the first client pixel;
+            // the client's Left edge must still turn that hit into TopLeft.
+            auto edges = resizeEdges({qreal(client.x), qreal(client.y)}, {qreal(rect.right), qreal(rect.bottom)},
+                                     thickness, horizontal, vertical, false, false);
+            const auto outerEdges = resizeEdges({qreal(screen.x - outer.left), qreal(screen.y - outer.top)},
+                {qreal(outer.right - outer.left), qreal(outer.bottom - outer.top)}, thickness,
+                horizontal, vertical, false, false);
+            if (!(edges & (Qt::LeftEdge | Qt::RightEdge)))
+                edges |= outerEdges & (Qt::LeftEdge | Qt::RightEdge);
+            if (!(edges & (Qt::TopEdge | Qt::BottomEdge)))
+                edges |= outerEdges & (Qt::TopEdge | Qt::BottomEdge);
+            if (edges)
+                return edgeHit(edges);
         }
-        RECT rect{};
-        GetClientRect(m_hwnd, &rect);
-        const auto edges = resizeEdges({ qreal(client.x), qreal(client.y) }, { qreal(rect.right), qreal(rect.bottom) },
-                                       border(), canResizeWidth(m_host), canResizeHeight(m_host),
-                                       IsZoomed(m_hwnd) || m_host.states().testFlag(Qt::WindowMaximized), false);
-        if (edges)
-            return edgeHit(edges);
         switch (m_hitTest.hitTest(m_host, logicalPoint(screen)))
         {
         case HitRegion::Caption:
@@ -441,7 +466,7 @@ private:
         QTimer::singleShot(0, this,
                            [this, command, generation]
                            {
-                               if (generation != m_generation || !m_hwnd || inputBlocked())
+                               if (!m_framelessEnabled || generation != m_generation || !m_hwnd || inputBlocked())
                                    return;
                                if (command == SC_CLOSE)
                                {
@@ -506,6 +531,21 @@ private:
     bool process(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result)
     {
         result = 0;
+        switch (message)
+        {
+        case WM_SETTINGCHANGE:
+        case WM_DWMCOMPOSITIONCHANGED:
+        case WM_THEMECHANGED:
+        case WM_SYSCOLORCHANGE:
+        case WM_DWMCOLORIZATIONCOLORCHANGED:
+            m_material.invalidate();
+            scheduleSynchronize();
+            return false;
+        default:
+            break;
+        }
+        if (!m_framelessEnabled)
+            return false;
         switch (message)
         {
         case WM_NCCALCSIZE:
@@ -574,17 +614,6 @@ private:
                 position->flags |= SWP_NOCOPYBITS;
             return false;
         }
-        case WM_SETTINGCHANGE:
-        case WM_DWMCOMPOSITIONCHANGED:
-            m_material.invalidate();
-            scheduleSynchronize();
-            return false;
-        case WM_THEMECHANGED:
-        case WM_SYSCOLORCHANGE:
-        case WM_DWMCOLORIZATIONCOLORCHANGED:
-            m_material.invalidate();
-            scheduleSynchronize();
-            return false;
         /* frame-related changes retain normal Qt processing */
         case WM_DWMNCRENDERINGCHANGED:
         case WM_DPICHANGED:
@@ -712,6 +741,7 @@ private:
         }
     }
     WindowsMaterial m_material;
+    bool m_nativeFrameApplied            = false;
     bool m_destroying                    = false;
     bool m_nativeFilterInstalled         = false;
     bool m_materialSurfaceRefreshed       = false;
@@ -732,7 +762,6 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     if (QGuiApplication::platformName() != QStringLiteral("windows"))
         return createQtFallbackBackend(host, hitTest, std::move(diagnostic));
     auto backend = std::make_unique<WindowsBackend>(host, hitTest, std::move(diagnostic));
-    backend->start();
     return backend;
 }
 } // namespace WindowHeler::Internal

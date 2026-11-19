@@ -1,6 +1,9 @@
 #include "WindowsTestSupport.h"
 #include <WindowHeler/Initialization.h>
 #include <WindowHeler/FramelessWidgetAgent.h>
+#ifdef TEST_WINDOW_MATERIAL
+#include <WindowHeler/MaterialWidgetAgent.h>
+#endif
 #include <QApplication>
 #include <QDialog>
 #include <QPushButton>
@@ -11,6 +14,60 @@ class WidgetsNativeTests : public QObject
 {
     Q_OBJECT
 private slots:
+#ifdef TEST_WINDOW_MATERIAL
+    void frameAndMaterial_data()
+    {
+        QTest::addColumn<bool>("frameFirst");
+        QTest::newRow("frame first") << true;
+        QTest::newRow("material first") << false;
+    }
+    void frameAndMaterial()
+    {
+        using namespace WindowHeler;
+        QFETCH(bool, frameFirst);
+        QWidget window;
+        window.resize(640, 420);
+        QWidget bar(&window);
+        bar.setGeometry(8, 8, 624, 44);
+        std::unique_ptr<FramelessWidgetAgent> frame;
+        std::unique_ptr<MaterialWidgetAgent> material;
+        if (frameFirst)
+            frame = std::make_unique<FramelessWidgetAgent>(&window);
+        material = std::make_unique<MaterialWidgetAgent>(&window);
+        QSignalSpy materialErrors(material.get(), &MaterialWidgetAgent::errorOccurred);
+        material->setMaterial(Material::Transparent);
+        QCOMPARE(material->material(), Material::Transparent);
+        if (!frameFirst)
+            frame = std::make_unique<FramelessWidgetAgent>(&window);
+        QSignalSpy frameErrors(frame.get(), &FramelessWidgetAgent::errorOccurred);
+        frame->setTitleBar(&bar);
+        QCOMPARE(frame->titleBar(), &bar);
+        QVERIFY(!window.testAttribute(Qt::WA_WState_Created));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(material->effectiveMaterial(), Material::Transparent);
+        QCOMPARE(nativeHit(window.windowHandle(), {30, 20}), LRESULT(HTCAPTION));
+        auto duplicate = std::make_unique<MaterialWidgetAgent>(&window);
+        QSignalSpy duplicateErrors(duplicate.get(), &MaterialWidgetAgent::errorOccurred);
+        QTRY_COMPARE(duplicateErrors.count(), 1);
+        QCOMPARE(materialErrors.count(), 0);
+        QCOMPARE(frameErrors.count(), 0);
+        if (frameFirst)
+        {
+            material.reset();
+            QTRY_VERIFY(!window.testAttribute(Qt::WA_NoSystemBackground));
+            QCOMPARE(nativeHit(window.windowHandle(), {30, 20}), LRESULT(HTCAPTION));
+        }
+        else
+        {
+            frame.reset();
+            QTRY_COMPARE(nativeHit(window.windowHandle(), {30, 20}), LRESULT(HTCLIENT));
+            QCOMPARE(material->effectiveMaterial(), Material::Transparent);
+            material->setMaterial(Material::Solid);
+            QTRY_COMPARE(material->effectiveMaterial(), Material::Solid);
+        }
+    }
+#endif
     void frameAndGeometry()
     {
         QWidget window;
@@ -31,11 +88,27 @@ private slots:
                                   {0, 419}, {320, 419}, {639, 419}};
         const QList<int> hits{HTTOPLEFT, HTTOP, HTTOPRIGHT, HTLEFT, HTRIGHT, HTBOTTOMLEFT, HTBOTTOM, HTBOTTOMRIGHT};
         for (int i=0; i<edges.size(); ++i) QCOMPARE(nativeHit(window.windowHandle(), edges[i]), LRESULT(hits[i]));
-        RECT frame{}, client{}; GetWindowRect(nativeHandle(window.windowHandle()), &frame);
-        GetClientRect(nativeHandle(window.windowHandle()), &client);
-        QCOMPARE(client.right, frame.right - frame.left);
-        QCOMPARE(client.bottom, frame.bottom - frame.top);
-        QCOMPARE(window.size(), QSize(640,420));
+        const HWND hwnd = nativeHandle(window.windowHandle());
+        RECT frame{}, client{};
+        QVERIFY(GetWindowRect(hwnd, &frame));
+        QVERIFY(GetClientRect(hwnd, &client));
+        POINT clientOrigin{};
+        QVERIFY(ClientToScreen(hwnd, &clientOrigin));
+        QCOMPARE(window.size(), QSize(640, 420));
+        const auto scale = window.windowHandle()->devicePixelRatio();
+        QCOMPARE(client.right, qRound(640 * scale));
+        QCOMPARE(client.bottom, qRound(420 * scale));
+        // The normal window retains the invisible sizing frame and visible DWM border,
+        // but no native title bar. Compare their thickness at the current HWND DPI.
+        const UINT dpi = GetDpiForWindow(hwnd);
+        const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+        const int horizontalBorder = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + padding + 2;
+        const int verticalBorder = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + padding + 2;
+        const auto isBorder = [](int inset, int limit) { return inset >= 0 && inset <= limit; };
+        QVERIFY(isBorder(clientOrigin.x - frame.left, horizontalBorder));
+        QVERIFY(isBorder(frame.right - clientOrigin.x - client.right, horizontalBorder));
+        QVERIFY(isBorder(clientOrigin.y - frame.top, verticalBorder));
+        QVERIFY(isBorder(frame.bottom - clientOrigin.y - client.bottom, verticalBorder));
         button.setEnabled(false);
         QCOMPARE(nativeHit(window.windowHandle(), {550,20}), LRESULT(HTCLIENT));
         button.setEnabled(true);

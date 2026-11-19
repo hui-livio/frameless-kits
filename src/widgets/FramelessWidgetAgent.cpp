@@ -1,5 +1,4 @@
 #include "../core/Runtime_p.h"
-#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
 #include <WindowHeler/FramelessWidgetAgent.h>
@@ -224,21 +223,14 @@ private:
 class FramelessWidgetAgent::Private
 {
 public:
-    explicit Private(QWidget* host) : window(host), controller(std::make_unique<WidgetHostAdapter>(host), false)
-    {
-        context = Internal::windowheler_acquire_context(host);
-        Internal::windowheler_retain_capability(context, Internal::Capability::Frameless);
-    }
-    ~Private()
-    {
-        Internal::windowheler_release_capability(context, Internal::Capability::Frameless);
-        Internal::windowheler_release_context(context);
-    }
+    explicit Private(QWidget* host)
+        : window(host), controller(Internal::WindowController::acquire(std::make_unique<WidgetHostAdapter>(host), false,
+                                                                      Internal::Capability::Frameless))
+    {}
     QPointer<QWidget> window;
     QPointer<QWidget> titleBar;
     QPointer<QAbstractButton> maximizeButton;
-    Internal::WindowController controller;
-    Internal::WindowContextHandle* context = nullptr;
+    std::shared_ptr<Internal::WindowController> controller;
 #ifdef Q_OS_MACOS
     std::unique_ptr<Internal::CocoaWidgetSafeArea> safeArea;
 #endif
@@ -246,9 +238,9 @@ public:
 
 FramelessWidgetAgent::FramelessWidgetAgent(QWidget* window) : QObject(window), d(new Private(window))
 {
-    connect(&d->controller, &Internal::WindowController::errorOccurred, this, &FramelessWidgetAgent::errorOccurred);
+    connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &FramelessWidgetAgent::errorOccurred);
 #ifdef Q_OS_MACOS
-    if (d->controller.isBound() && QGuiApplication::platformName() == QStringLiteral("cocoa"))
+    if (d->controller->isBound() && QGuiApplication::platformName() == QStringLiteral("cocoa"))
     {
         d->safeArea = std::make_unique<Internal::CocoaWidgetSafeArea>(window);
         d->safeArea->setTitleBar(nullptr);
@@ -256,7 +248,10 @@ FramelessWidgetAgent::FramelessWidgetAgent(QWidget* window) : QObject(window), d
 #endif
 }
 
-FramelessWidgetAgent::~FramelessWidgetAgent() = default;
+FramelessWidgetAgent::~FramelessWidgetAgent()
+{
+    disconnect(d->controller.get(), nullptr, this, nullptr);
+}
 QWidget* FramelessWidgetAgent::window() const
 {
     return d->window;
@@ -269,7 +264,7 @@ QWidget* FramelessWidgetAgent::titleBar() const
 
 void FramelessWidgetAgent::setTitleBar(QWidget* item)
 {
-    if (!d->controller.setTitleBar(item))
+    if (!d->controller->setTitleBar(item))
         return;
     d->titleBar = item;
 #ifdef Q_OS_MACOS
@@ -280,7 +275,7 @@ void FramelessWidgetAgent::setTitleBar(QWidget* item)
 
 void FramelessWidgetAgent::setInteractive(QWidget* widget, bool enabled)
 {
-    d->controller.setInteractive(widget, enabled);
+    d->controller->setInteractive(widget, enabled);
 }
 
 QAbstractButton* FramelessWidgetAgent::maximizeButton() const
@@ -291,7 +286,7 @@ QAbstractButton* FramelessWidgetAgent::maximizeButton() const
 void FramelessWidgetAgent::setMaximizeButton(QAbstractButton* button)
 {
     const QPointer<FramelessWidgetAgent> guard(this);
-    if (d->controller.setMaximizeButton(button) && guard)
+    if (d->controller->setMaximizeButton(button) && guard)
         d->maximizeButton = button;
 }
 

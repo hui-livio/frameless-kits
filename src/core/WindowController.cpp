@@ -19,44 +19,94 @@ QHash<QObject*, WindowController*>& bindings()
     return value;
 }
 } // namespace
-WindowController::WindowController(std::unique_ptr<HostAdapter> host, bool quick, QObject* parent)
-    : QObject(parent), m_host(std::move(host))
+WindowController::WindowController(std::unique_ptr<HostAdapter> host) : m_host(std::move(host)) {}
+
+std::shared_ptr<WindowController> WindowController::acquire(std::unique_ptr<HostAdapter> host, bool quick,
+                                                            Capability capability)
 {
+    auto candidate = std::shared_ptr<WindowController>(new WindowController(std::move(host)));
     if (!checkGuiThread("WindowController"))
-        return;
+        return candidate;
     if (!isInitialized(quick))
     {
-        report(QStringLiteral("Call WindowHeler::initialize with the required "
-                              "frontend before creating an Agent."),
-               true);
-        return;
+        candidate->report(QStringLiteral("Call WindowHeler::initialize with the required "
+                                         "frontend before creating an Agent."), true);
+        return candidate;
     }
-    QObject* object = m_host ? m_host->host() : nullptr;
+    QObject* object = candidate->m_host ? candidate->m_host->host() : nullptr;
     if (!object)
     {
-        report(QStringLiteral("Agent requires a valid top-level window."), true);
-        return;
+        candidate->report(QStringLiteral("Agent requires a valid top-level window."), true);
+        return candidate;
     }
-    if (bindings().contains(object))
+    const auto flag = static_cast<quint8>(capability);
+    auto* existing = bindings().value(object);
+    if (existing && (!existing->m_bound || (existing->m_capabilities & flag)))
     {
-        report(QStringLiteral("This window already has an Agent; the original "
-                              "binding is unchanged."),
-               true);
-        return;
+        candidate->report(QStringLiteral("This window already has an Agent for this capability; "
+                                         "the original binding is unchanged."), true);
+        return candidate;
     }
+    auto controller = existing ? existing->shared_from_this() : candidate;
+    controller->m_capabilities |= flag;
+    if (!existing)
+        controller->attach(object);
+    else if (capability == Capability::Frameless && controller->m_backend)
+        controller->m_backend->setFramelessEnabled(true);
+
+    // A lease owns one capability; the shared controller survives until both leases are gone.
+    auto* binding = controller.get();
+    return std::shared_ptr<WindowController>(binding, [controller = std::move(controller), capability](WindowController*)
+    {
+        controller->release(capability);
+    });
+}
+
+void WindowController::attach(QObject* object)
+{
     bindings().insert(object, this);
-    m_bindingKey              = object;
+    m_bindingKey = object;
     m_hostDestroyedConnection = connect(object, &QObject::destroyed, this,
                                         [this]
                                         {
                                             removeBinding();
                                             m_backend.reset();
                                         });
-    m_bound                   = true;
+    m_bound = true;
     m_host->prepareMaterialSurface();
+    if (!m_bound)
+        return;
     m_backend = createPlatformBackend(*m_host, m_hitTest, [this](const QString& error) { report(error, true); });
     m_backend->setMaterialRefresh([this] { refreshMaterial(); });
+    m_backend->start((m_capabilities & static_cast<quint8>(Capability::Frameless)) != 0);
 }
+
+void WindowController::release(Capability capability)
+{
+    m_capabilities &= ~static_cast<quint8>(capability);
+    if (!m_capabilities || !m_bound || !m_backend)
+        return; // The last lease lets the destructor restore all native state.
+    if (capability == Capability::Material)
+        setMaterial(Material::Solid);
+    else
+    {
+        clearRegistrations();
+        m_backend->setFramelessEnabled(false);
+    }
+}
+
+void WindowController::clearRegistrations()
+{
+    for (const auto& connection : std::as_const(m_registrationConnections))
+        disconnect(connection);
+    m_registrationConnections.clear();
+    m_titleBarKey = m_maximizeButtonKey = nullptr;
+    m_hitTest.titleBar.clear();
+    m_hitTest.maximizeButton.clear();
+    m_hitTest.interactiveItems.clear();
+    ++m_hitTest.revision;
+}
+
 WindowController::~WindowController()
 {
     // Keep the registry reservation until native/background cleanup finishes.
@@ -65,9 +115,7 @@ WindowController::~WindowController()
     m_bound = false;
     m_hitTest.invalidateOwner();
     disconnect(m_hostDestroyedConnection);
-    for (const auto& connection : std::as_const(m_registrationConnections))
-        disconnect(connection);
-    m_registrationConnections.clear();
+    clearRegistrations();
     m_backend.reset();
     // Keep the model alive while host cleanup can still invoke application callbacks.
     m_host.reset();

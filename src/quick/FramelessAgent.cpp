@@ -1,5 +1,4 @@
 #include "../core/Runtime_p.h"
-#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
 #include <WindowHeler/FramelessAgent.h>
@@ -17,10 +16,118 @@
 #include <algorithm>
 #include <utility>
 
+#ifdef Q_OS_WIN
+#include <QOperatingSystemVersion>
+#include <QSettings>
+#include <QSGSimpleRectNode>
+#include <QStyleHints>
+#include <limits>
+#include <qt_windows.h>
+#endif
+
 namespace WindowHeler
 {
 namespace
 {
+#ifdef Q_OS_WIN
+class QuickTopBorder final : public QQuickItem
+{
+public:
+    static bool needed()
+    {
+        return QGuiApplication::platformName() == QStringLiteral("windows") &&
+               QOperatingSystemVersion::current().microVersion() < 22000;
+    }
+
+    explicit QuickTopBorder(QQuickWindow* host) : QQuickItem(host->contentItem())
+    {
+        setObjectName(QStringLiteral("_windowheler_quickTopBorder"));
+        setFlag(ItemHasContents);
+        setAcceptedMouseButtons(Qt::NoButton);
+        setZ(std::numeric_limits<qreal>::max());
+        connect(parentItem(), &QQuickItem::widthChanged, this, &QuickTopBorder::updateGeometry);
+        connect(host, &QWindow::windowStateChanged, this, &QuickTopBorder::updateGeometry);
+        connect(host, &QWindow::activeChanged, this, &QuickTopBorder::updateColor);
+        connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &QuickTopBorder::updateColor);
+        qApp->installEventFilter(this);
+        updateGeometry();
+        updateColor();
+    }
+
+protected:
+    QSGNode* updatePaintNode(QSGNode* old, UpdatePaintNodeData*) override
+    {
+        // Quick's swapchain replaces the top client pixel after a GDI draw. Put
+        // the edge in the same scene graph as the rest of the window instead.
+        auto* node = old ? static_cast<QSGSimpleRectNode*>(old) : new QSGSimpleRectNode;
+        node->setRect(boundingRect());
+        node->setColor(m_color);
+        return node;
+    }
+
+    void itemChange(ItemChange change, const ItemChangeData& data) override
+    {
+        QQuickItem::itemChange(change, data);
+        if (change == ItemDevicePixelRatioHasChanged)
+            setHeight(1.0 / data.realValue);
+    }
+
+    bool eventFilter(QObject* object, QEvent* event) override
+    {
+        if ((object == qApp || object == window()) &&
+            (event->type() == QEvent::ThemeChange || event->type() == QEvent::ApplicationPaletteChange ||
+             event->type() == QEvent::PaletteChange))
+            updateColor();
+        return false;
+    }
+
+private:
+    void updateGeometry()
+    {
+        if (auto* host = window())
+        {
+            setVisible(!(host->windowStates() & (Qt::WindowMaximized | Qt::WindowFullScreen | Qt::WindowMinimized)));
+            setWidth(host->contentItem()->width());
+            setHeight(1.0 / host->devicePixelRatio());
+        }
+    }
+
+    void updateColor()
+    {
+        if (!window())
+            return;
+        const bool active = window()->isActive();
+        const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+        // Win10's neutral frame tones for light/dark and focused/unfocused windows.
+        QColor color = dark ? (active ? QColor(51, 51, 51) : QColor(61, 61, 62))
+                            : (active ? QColor(110, 110, 110) : QColor(167, 167, 167));
+        HIGHCONTRASTW contrast{sizeof(contrast), 0, nullptr};
+        if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) &&
+            (contrast.dwFlags & HCF_HIGHCONTRASTON))
+        {
+            const COLORREF border = GetSysColor(active ? COLOR_ACTIVEBORDER : COLOR_INACTIVEBORDER);
+            color = QColor(GetRValue(border), GetGValue(border), GetBValue(border));
+        }
+        else if (active)
+        {
+            const QSettings dwm(QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\DWM"),
+                                QSettings::NativeFormat);
+            bool ok = false;
+            const uint accent = dwm.value(QStringLiteral("AccentColor")).toUInt(&ok);
+            if (ok && dwm.value(QStringLiteral("ColorPrevalence")).toBool())
+                color = QColor(GetRValue(accent), GetGValue(accent), GetBValue(accent));
+        }
+        if (m_color != color)
+        {
+            m_color = color;
+            update();
+        }
+    }
+
+    QColor m_color;
+};
+#endif
+
 // QQuickWindow may stop reporting alpha after its clear color becomes opaque.
 // Keep confirmed capability with the native-surface lifetime, not an Agent's
 // shorter binding lifetime. The window owns this observer, even between Agents.
@@ -242,6 +349,9 @@ class FramelessAgent::Private
 {
 public:
     QPointer<QQuickWindow> window;
+#ifdef Q_OS_WIN
+    QPointer<QuickTopBorder> topBorder;
+#endif
     QPointer<QQuickItem> titleBar;
     QPointer<QQuickItem> maximizeButton;
     QList<QPointer<QQuickItem>> interactive;
@@ -249,8 +359,7 @@ public:
     QMetaObject::Connection windowDestroyed;
     QMetaObject::Connection titleDestroyed;
     QMetaObject::Connection buttonDestroyed;
-    std::unique_ptr<Internal::WindowController> controller;
-    Internal::WindowContextHandle* context = nullptr;
+    std::shared_ptr<Internal::WindowController> controller;
     quint64 bindingRevision     = 0;
     quint64 titleRevision       = 0;
     quint64 buttonRevision      = 0;
@@ -353,13 +462,13 @@ FramelessAgent::~FramelessAgent()
     disconnect(d->buttonDestroyed);
     for (const auto& connection : std::as_const(d->interactiveDestroyed))
         disconnect(connection);
+#ifdef Q_OS_WIN
+    delete d->topBorder.data();
+#endif
     auto retired = std::move(d->controller);
     if (retired)
         disconnect(retired.get(), nullptr, this, nullptr);
     retired.reset();
-    Internal::windowheler_release_capability(d->context, Internal::Capability::Frameless);
-    Internal::windowheler_release_context(d->context);
-    d->context = nullptr;
 }
 
 void FramelessAgent::classBegin()
@@ -413,10 +522,11 @@ void FramelessAgent::setWindow(QQuickWindow* value)
     auto retired       = std::move(d->controller);
     if (retired)
         disconnect(retired.get(), nullptr, this, nullptr);
+#ifdef Q_OS_WIN
+    auto oldBorder = std::exchange(d->topBorder, {});
+    delete oldBorder.data();
+#endif
     retired.reset();
-    Internal::windowheler_release_capability(d->context, Internal::Capability::Frameless);
-    Internal::windowheler_release_context(d->context);
-    d->context = nullptr;
     const auto valid = [&] { return guard && !guard->d->destroying && guard->d->bindingRevision == revision; };
     if (!valid())
         return;
@@ -452,12 +562,11 @@ void FramelessAgent::bindWindow()
         });
     const QPointer<QQuickWindow> target(d->window);
     const quint64 revision = d->bindingRevision;
-    auto created = std::make_unique<Internal::WindowController>(std::make_unique<QuickHostAdapter>(target), true);
+    auto created = Internal::WindowController::acquire(std::make_unique<QuickHostAdapter>(target), true,
+                                                       Internal::Capability::Frameless);
     if (!guard || d->destroying || d->bindingRevision != revision || !target || d->window != target)
         return;
     d->controller = std::move(created);
-    d->context = Internal::windowheler_acquire_context(target);
-    Internal::windowheler_retain_capability(d->context, Internal::Capability::Frameless);
     const QPointer<Internal::WindowController> controller(d->controller.get());
     const auto valid = [&]
     {
@@ -509,6 +618,16 @@ void FramelessAgent::bindWindow()
         if (!valid())
             return;
     }
+#ifdef Q_OS_WIN
+    if (QuickTopBorder::needed())
+    {
+        const QPointer<QuickTopBorder> border = new QuickTopBorder(target);
+        if (valid())
+            d->topBorder = border;
+        else
+            delete border.data();
+    }
+#endif
 }
 
 QQuickItem* FramelessAgent::titleBar() const

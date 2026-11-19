@@ -125,7 +125,7 @@ Window {
                 Layout.preferredWidth: 180
                 textRole: "text"
                 valueRole: "value"
-                currentIndex: root.initialMaterial
+                currentIndex: material.material
                 model: [
                     {
                         text: qsTr("纯色"),

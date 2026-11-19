@@ -21,7 +21,8 @@ public:
     using Diagnostic = std::function<void(const QString&)>;
     PlatformBackend(HostAdapter& host, const HitTestModel& hitTest, Diagnostic diagnostic);
     ~PlatformBackend() override;
-    void start();
+    void start(bool frameless);
+    void setFramelessEnabled(bool enabled);
     virtual bool applyMaterial(Material material, QString& error);
     virtual bool materialReady() const;
     void setMaterialRefresh(std::function<void()> refresh)
@@ -55,6 +56,7 @@ protected:
     const HitTestModel& m_hitTest;
     Diagnostic m_diagnostic;
     quint64 m_generation = 0;
+    bool m_framelessEnabled = false;
 
 private:
     void observeCursorWindow(QWindow* window);

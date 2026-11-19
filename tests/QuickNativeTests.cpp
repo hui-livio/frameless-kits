@@ -2,7 +2,11 @@
 
 #include <WindowHeler/Initialization.h>
 #include <WindowHeler/FramelessAgent.h>
+#ifdef TEST_WINDOW_MATERIAL
+#include <WindowHeler/MaterialAgent.h>
+#endif
 #include <QGuiApplication>
+#include <QOperatingSystemVersion>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -14,6 +18,90 @@ class QuickNativeTests : public QObject
 {
     Q_OBJECT
 private slots:
+#ifdef TEST_WINDOW_MATERIAL
+    void declarativeFrameAndInitialMaterial()
+    {
+        using namespace WindowHeler;
+        QQmlEngine engine;
+        engine.addImportPath(QString::fromUtf8(WINDOWHELER_TEST_QML_IMPORT_PATH));
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            import WindowHeler.Frameless
+            import WindowHeler.Material
+            Window {
+                id: root
+                width: 640; height: 420
+                Item { id: bar; x: 8; y: 8; width: 624; height: 44 }
+                FramelessAgent { objectName: "frame"; window: root; titleBar: bar }
+                MaterialAgent {
+                    objectName: "material"
+                    material: MaterialAgent.Transparent
+                    window: root
+                }
+            }
+        )", QUrl());
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto* window = qobject_cast<QQuickWindow*>(root.get());
+        QVERIFY(window);
+        auto* frame = window->findChild<FramelessAgent*>("frame");
+        auto* material = window->findChild<MaterialAgent*>("material");
+        QVERIFY(frame && frame->titleBar() && material);
+        QSignalSpy frameErrors(frame, &FramelessAgent::errorOccurred);
+        QSignalSpy materialErrors(material, &MaterialAgent::errorOccurred);
+        QCOMPARE(material->material(), MaterialAgent::Material::Transparent);
+        window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(material->effectiveMaterial(), MaterialAgent::Material::Transparent);
+        QCOMPARE(nativeHit(window, {30, 20}), LRESULT(HTCAPTION));
+        const HWND handle = nativeHandle(window);
+        SendMessageW(handle, WM_NCLBUTTONDBLCLK, HTCAPTION, nativePoint(handle, {30, 20}, window->devicePixelRatio()));
+        QTRY_COMPARE(window->visibility(), QWindow::Maximized);
+        window->showNormal();
+        QTRY_COMPARE(window->visibility(), QWindow::Windowed);
+        QCOMPARE(frameErrors.count(), 0);
+        QCOMPARE(materialErrors.count(), 0);
+        frame->setWindow(nullptr);
+        QTRY_COMPARE(nativeHit(window, {30, 20}), LRESULT(HTCLIENT));
+        QCOMPARE(material->effectiveMaterial(), MaterialAgent::Material::Transparent);
+        material->setWindow(nullptr);
+        QCOMPARE(material->material(), MaterialAgent::Material::Transparent);
+        QCOMPARE(material->effectiveMaterial(), MaterialAgent::Material::Solid);
+    }
+#endif
+    void topBorderFollowsWindowState()
+    {
+        QQuickWindow window;
+        window.resize(640, 420);
+        WindowHeler::FramelessAgent frame;
+        frame.setWindow(&window);
+        auto* border = window.findChild<QQuickItem*>(QStringLiteral("_windowheler_quickTopBorder"));
+        if (QOperatingSystemVersion::current().microVersion() >= 22000)
+        {
+            QVERIFY(!border); // Windows 11 draws its own top edge.
+            return;
+        }
+        QVERIFY(border);
+        QCOMPARE(border->acceptedMouseButtons(), Qt::MouseButtons(Qt::NoButton));
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QCOMPARE(border->width(), qreal(window.width()));
+        QCOMPARE(border->height() * window.devicePixelRatio(), 1.0);
+        QVERIFY(border->isVisible());
+        window.resize(720, 420);
+        QTRY_COMPARE(border->width(), qreal(720));
+        window.showMaximized();
+        QTRY_VERIFY(!border->isVisible());
+        window.showFullScreen();
+        QTRY_COMPARE(window.visibility(), QWindow::FullScreen);
+        QVERIFY(!border->isVisible());
+        window.showNormal();
+        QTRY_VERIFY(border->isVisible());
+        const QPointer<QQuickItem> borderLifetime(border);
+        frame.setWindow(nullptr);
+        QVERIFY(!borderLifetime);
+    }
     void frameAndButton()
     {
         QQmlEngine engine;

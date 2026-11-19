@@ -5,7 +5,6 @@ std::unique_ptr<PlatformBackend> createQtFallbackBackend(HostAdapter& host, cons
                                                          PlatformBackend::Diagnostic diagnostic)
 {
     auto backend = std::make_unique<PlatformBackend>(host, hitTest, std::move(diagnostic));
-    backend->start();
     return backend;
 }
 #if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS) && !defined(WINDOWHELER_HAS_LINUX_BACKEND)

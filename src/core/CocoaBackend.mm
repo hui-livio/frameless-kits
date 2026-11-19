@@ -294,13 +294,6 @@ protected:
                 return;
             ++m_generation;
             m_view      = view;
-            m_viewClass = installNativeClass(view, true);
-            if (!m_viewClass)
-            {
-                m_diagnostic(QStringLiteral("Could not install the Cocoa view input adapter."));
-                m_view = nil;
-                return;
-            }
             m_originalWantsLayer = view.wantsLayer;
             view.wantsLayer      = YES;
             const QPointer<CocoaBackend> guard(this);
@@ -319,19 +312,6 @@ protected:
             if (!nativeWindow)
                 return; // NSView.window may become available after SurfaceCreated.
             m_window                 = nativeWindow;
-            m_originalFullSize       = bool(nativeWindow.styleMask & NSWindowStyleMaskFullSizeContentView);
-            m_originalTransparent    = nativeWindow.titlebarAppearsTransparent;
-            m_originalVisibility     = nativeWindow.titleVisibility;
-            m_originalShadow         = nativeWindow.hasShadow;
-            m_originalMovable        = nativeWindow.movable;
-            m_originalBackgroundMove = nativeWindow.movableByWindowBackground;
-            m_windowClass            = installNativeClass(nativeWindow, false);
-            if (!m_windowClass)
-            {
-                m_window = nil;
-                m_diagnostic(QStringLiteral("Could not install the Cocoa native frame adapter."));
-                return;
-            }
             m_notifications = [NSMutableArray new];
             const QPointer<CocoaBackend> guard(this);
             const quint64 generation = m_generation;
@@ -360,7 +340,30 @@ protected:
                 [m_notifications addObject:token];
             }
         }
-        applyFrame();
+        if (m_framelessEnabled && m_window)
+        {
+            if (!m_windowClass)
+            {
+                NSWindow* window = m_window;
+                m_originalFullSize       = bool(window.styleMask & NSWindowStyleMaskFullSizeContentView);
+                m_originalTransparent    = window.titlebarAppearsTransparent;
+                m_originalVisibility     = window.titleVisibility;
+                m_originalShadow         = window.hasShadow;
+                m_originalMovable        = window.movable;
+                m_originalBackgroundMove = window.movableByWindowBackground;
+                m_viewClass   = installNativeClass(m_view, true);
+                m_windowClass = installNativeClass(window, false);
+                if (!m_viewClass || !m_windowClass)
+                {
+                    detachFrame(false);
+                    m_diagnostic(QStringLiteral("Could not install the Cocoa native frame adapter."));
+                    return;
+                }
+            }
+            applyFrame();
+        }
+        else
+            detachFrame(true);
     }
     void releaseNative(bool restore) override
     {
@@ -373,11 +376,9 @@ protected:
             m_observer = nil;
         }
         detachWindow(restore);
-        removeNativeClass(m_view, m_viewClass);
         if (restore && m_view.wantsLayer)
             m_view.wantsLayer = m_originalWantsLayer;
-        m_viewClass = Nil;
-        m_view      = nil;
+        m_view = nil;
     }
 
 private:
@@ -443,11 +444,18 @@ private:
         for (id token in m_notifications)
             [[NSNotificationCenter defaultCenter] removeObserver:token];
         m_notifications  = nil;
+        detachFrame(restore);
+        m_window = nil;
+    }
+    void detachFrame(bool restore)
+    {
         NSWindow* window = m_window;
+        const bool hadFrame = m_windowClass != Nil;
         removeNativeClass(window, m_windowClass);
+        removeNativeClass(m_view, m_viewClass);
         m_windowClass = Nil;
-        m_window      = nil;
-        if (!restore || !window)
+        m_viewClass = Nil;
+        if (!restore || !window || !hadFrame)
             return;
         // Restore only fields controlled by this binding, preserving other style bits.
         if (!m_originalFullSize && (window.styleMask & NSWindowStyleMaskFullSizeContentView))
@@ -496,7 +504,6 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     if (QGuiApplication::platformName() != QStringLiteral("cocoa"))
         return createQtFallbackBackend(host, hitTest, std::move(diagnostic));
     auto backend = std::make_unique<CocoaBackend>(host, hitTest, std::move(diagnostic));
-    backend->start();
     return backend;
 }
 } // namespace WindowHeler::Internal

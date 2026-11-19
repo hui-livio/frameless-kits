@@ -113,7 +113,6 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     if (platform != QStringLiteral("xcb") && !platform.startsWith(QStringLiteral("wayland")))
         return createQtFallbackBackend(host, hitTest, std::move(diagnostic));
     auto backend = std::make_unique<LinuxBackend>(host, hitTest, std::move(diagnostic));
-    backend->start();
     return backend;
 }
 } // namespace WindowHeler::Internal

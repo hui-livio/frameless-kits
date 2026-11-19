@@ -9,6 +9,7 @@
 #include <QStyleHints>
 #include <QTimer>
 #include <QWindow>
+#include <utility>
 
 namespace WindowHeler::Internal
 {
@@ -23,15 +24,39 @@ PlatformBackend::~PlatformBackend()
     if (m_changedFrameless && m_host.host())
         m_host.setFrameless(m_originalFrameless);
 }
-void PlatformBackend::start()
+void PlatformBackend::start(bool frameless)
 {
-    m_originalFrameless = m_host.flags().testFlag(Qt::FramelessWindowHint);
-    m_changedFrameless  = m_originalFrameless != framelessHint();
-    if (m_changedFrameless)
-        m_host.setFrameless(framelessHint());
     qApp->installEventFilter(this);
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] { scheduleSynchronize(); });
-    synchronizeNative();
+    if (frameless)
+        setFramelessEnabled(true);
+    else
+        synchronizeNative();
+}
+void PlatformBackend::setFramelessEnabled(bool enabled)
+{
+    if (m_framelessEnabled == enabled)
+        return;
+    const QPointer<PlatformBackend> guard(this);
+    m_framelessEnabled = enabled;
+    if (enabled)
+    {
+        m_originalFrameless = m_host.flags().testFlag(Qt::FramelessWindowHint);
+        m_changedFrameless = m_originalFrameless != framelessHint();
+        if (m_changedFrameless)
+            m_host.setFrameless(framelessHint());
+    }
+    else
+    {
+        resetInput();
+        if (!guard || m_framelessEnabled)
+            return;
+        const bool restore = std::exchange(m_changedFrameless, false);
+        if (restore && m_host.host())
+            m_host.setFrameless(m_originalFrameless);
+    }
+    if (guard)
+        synchronizeNative();
 }
 void PlatformBackend::resetInput()
 {
@@ -183,7 +208,7 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
             return true;
         scheduleSynchronize();
     }
-    if (nativeHandling() &&
+    if (m_framelessEnabled && nativeHandling() &&
         ((isHost && event->type() == QEvent::UpdateRequest) || (isWindow && event->type() == QEvent::Expose)))
     {
         // Let Qt complete its raster update before exposing the native top edge.
@@ -234,7 +259,7 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
             break;
         }
     }
-    if (nativeHandling() || (!isWindow && !isHost && !m_host.owns(object)))
+    if (!m_framelessEnabled || nativeHandling() || (!isWindow && !isHost && !m_host.owns(object)))
         return false;
     const QPointer<QWindow> window = m_host.window();
     if (!window || inputBlocked() || m_host.fullScreen())

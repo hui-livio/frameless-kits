@@ -28,12 +28,6 @@ private slots:
         agent.setTitleBar(&other);
         QCOMPARE(agent.titleBar(), &bar);
         QCOMPARE(errors.count(), 1);
-        QSignalSpy changes(&agent, &FramelessWidgetAgent::materialChanged);
-        agent.setMaterial(Material::Mica);
-        QCOMPARE(agent.material(), Material::Mica);
-        QCOMPARE(agent.effectiveMaterial(), Material::Solid);
-        agent.setMaterial(Material::Mica);
-        QCOMPARE(changes.count(), 1);
         agent.setTitleBar(nullptr);
         agent.setMaximizeButton(nullptr);
         QVERIFY(!agent.titleBar());

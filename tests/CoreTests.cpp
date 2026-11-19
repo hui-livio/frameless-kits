@@ -93,42 +93,45 @@ private slots:
     void bindingAndMaterials()
     {
         QObject root, other;
-        WindowController first(std::make_unique<TestHost>(&root), false);
-        QVERIFY(first.isBound());
-        QVERIFY(!first.accepts(&other));
-        WindowController duplicate(std::make_unique<TestHost>(&root), false);
-        QSignalSpy duplicateErrors(&duplicate, &WindowController::errorOccurred);
-        QVERIFY(!duplicate.isBound());
+        auto first = WindowController::acquire(std::make_unique<TestHost>(&root), false, Capability::Frameless);
+        QVERIFY(first->isBound());
+        QVERIFY(!first->accepts(&other));
+        auto duplicate = WindowController::acquire(std::make_unique<TestHost>(&root), false, Capability::Frameless);
+        QSignalSpy duplicateErrors(duplicate.get(), &WindowController::errorOccurred);
+        QVERIFY(!duplicate->isBound());
         QTRY_COMPARE(duplicateErrors.count(), 1);
-        QSignalSpy errors(&first, &WindowController::errorOccurred);
-        QSignalSpy applied(&first, &WindowController::effectiveMaterialChanged);
-        first.setMaterial(Material::Mica);
-        QCOMPARE(first.material(), Material::Mica);
-        QCOMPARE(first.effectiveMaterial(), Material::Solid);
-        QCOMPARE(errors.count(), 1);
+        auto material = WindowController::acquire(std::make_unique<TestHost>(&root), false, Capability::Material);
+        QCOMPARE(material.get(), first.get());
+        QSignalSpy errors(material.get(), &WindowController::errorOccurred);
+        QSignalSpy applied(material.get(), &WindowController::effectiveMaterialChanged);
+        material->setMaterial(Material::Mica);
+        QCOMPARE(material->material(), Material::Mica);
+        QCOMPARE(material->effectiveMaterial(), Material::Solid);
+        QCOMPARE(errors.count(), 0); // A request without a surface is pending, not a fallback error.
         QCOMPARE(applied.count(), 0);
-        first.setMaterial(Material::Mica);
+        material->setMaterial(Material::Mica);
+        QCOMPARE(errors.count(), 0);
+        material->setMaterial(Material::Solid);
+        QCOMPARE(material->material(), Material::Solid);
+        material->setMaterial(static_cast<Material>(999));
         QCOMPARE(errors.count(), 1);
-        first.setMaterial(Material::Solid);
-        QCOMPARE(first.material(), Material::Solid);
-        first.setMaterial(static_cast<Material>(999));
-        QCOMPARE(first.material(), Material::Solid);
+        QCOMPARE(material->material(), Material::Solid);
     }
     void bindingReleasesOnDestruction()
     {
         QObject root;
         {
-            WindowController first(std::make_unique<TestHost>(&root), false);
-            QVERIFY(first.isBound());
+            auto first = WindowController::acquire(std::make_unique<TestHost>(&root), false, Capability::Frameless);
+            QVERIFY(first->isBound());
         }
-        WindowController second(std::make_unique<TestHost>(&root), false);
-        QVERIFY(second.isBound());
+        auto second = WindowController::acquire(std::make_unique<TestHost>(&root), false, Capability::Frameless);
+        QVERIFY(second->isBound());
         auto* temporary = new QObject;
-        WindowController controller(std::make_unique<TestHost>(temporary), false);
-        QVERIFY(controller.isBound());
+        auto controller = WindowController::acquire(std::make_unique<TestHost>(temporary), false, Capability::Frameless);
+        QVERIFY(controller->isBound());
         delete temporary;
-        QVERIFY(!controller.isBound());
-        QCOMPARE(controller.hitTest({ 0, 0 }), HitRegion::Client);
+        QVERIFY(!controller->isBound());
+        QCOMPARE(controller->hitTest({ 0, 0 }), HitRegion::Client);
     }
 };
 int main(int argc, char** argv)

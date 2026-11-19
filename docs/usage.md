@@ -126,6 +126,8 @@ Linux 的 Solid / Transparent 与移动、缩放、最大化/还原共用原有 
 | 保留区域交互 | setInteractive | interactiveItems | 标题栏含交互控件时 |
 | 最大化按钮 Snap | setMaximizeButton | maximizeButton | 需要 Snap 时 |
 
+同一窗口可同时绑定一个无边框 Agent 和一个材质 Agent，绑定顺序不限；重复绑定同一能力会被拒绝。解绑其中一个不会移除另一个的能力。QML 的 `material` 可以在 `window` 绑定之前设置，绑定后会应用该请求。
+
 只读 effectiveMaterial 用于查询已配置结果；errorOccurred(message) 用于可选诊断。Demo 为了显示失败原因订阅错误信号，应用不必照搬。
 
 公共生命周期入口只有 main 中的 initialize；没有逐窗口 setup、prepare、ready、SurfaceMode、后端选择、缩放边框参数、单独主题配置或重复的窗口控制函数。

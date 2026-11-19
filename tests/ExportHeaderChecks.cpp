@@ -6,35 +6,44 @@
 
 namespace
 {
-constexpr std::string_view coreExport    = FK_STRINGIFY(WINDOWHELER_CORE_EXPORT);
-constexpr std::string_view widgetsExport = FK_STRINGIFY(WINDOWHELER_WIDGETS_EXPORT);
-constexpr std::string_view quickExport   = FK_STRINGIFY(WINDOWHELER_QUICK_EXPORT);
-
-#if defined(WINDOWHELER_STATIC)
-// MSVC's traditional preprocessor can retain whitespace before an empty macro.
 constexpr std::string_view trim(std::string_view value)
 {
     const auto first = value.find_first_not_of(" \t\r\n");
     return first == std::string_view::npos ? std::string_view{} : value.substr(first);
 }
-static_assert(trim(coreExport) == "fk_export_sentinel");
-static_assert(trim(widgetsExport) == "fk_export_sentinel");
-static_assert(trim(quickExport) == "fk_export_sentinel");
+#define CHECK_EXPORT(symbol, expected) static_assert(trim(FK_STRINGIFY_IMPL(symbol fk_export_sentinel)) == trim(expected))
+
+#if defined(WINDOWHELER_BUILD_RUNTIME)
+CHECK_EXPORT(WINDOWHELER_RUNTIME_EXPORT, FK_STRINGIFY(Q_DECL_EXPORT));
 #else
-#if defined(WINDOWHELER_BUILD_CORE)
-static_assert(coreExport == FK_STRINGIFY(Q_DECL_EXPORT));
-#else
-static_assert(coreExport == FK_STRINGIFY(Q_DECL_IMPORT));
+// Runtime stays a shared library even for static frontends.
+CHECK_EXPORT(WINDOWHELER_RUNTIME_EXPORT, FK_STRINGIFY(Q_DECL_IMPORT));
 #endif
-#if defined(WINDOWHELER_BUILD_WIDGETS)
-static_assert(widgetsExport == FK_STRINGIFY(Q_DECL_EXPORT));
+
+#if defined(WINDOWHELER_STATIC)
+#define DEFAULT_FRONTEND_EXPORT "fk_export_sentinel"
 #else
-static_assert(widgetsExport == FK_STRINGIFY(Q_DECL_IMPORT));
+#define DEFAULT_FRONTEND_EXPORT FK_STRINGIFY(Q_DECL_IMPORT)
 #endif
-#if defined(WINDOWHELER_BUILD_QUICK)
-static_assert(quickExport == FK_STRINGIFY(Q_DECL_EXPORT));
+
+#if defined(WINDOWHELER_BUILD_FRAMELESSWIDGETS)
+CHECK_EXPORT(WINDOWHELER_FRAMELESS_WIDGETS_EXPORT, FK_STRINGIFY(Q_DECL_EXPORT));
 #else
-static_assert(quickExport == FK_STRINGIFY(Q_DECL_IMPORT));
+CHECK_EXPORT(WINDOWHELER_FRAMELESS_WIDGETS_EXPORT, DEFAULT_FRONTEND_EXPORT);
 #endif
+#if defined(WINDOWHELER_BUILD_FRAMELESSQUICK)
+CHECK_EXPORT(WINDOWHELER_FRAMELESS_QUICK_EXPORT, FK_STRINGIFY(Q_DECL_EXPORT));
+#else
+CHECK_EXPORT(WINDOWHELER_FRAMELESS_QUICK_EXPORT, DEFAULT_FRONTEND_EXPORT);
+#endif
+#if defined(WINDOWHELER_BUILD_MATERIALWIDGETS)
+CHECK_EXPORT(WINDOWHELER_MATERIAL_WIDGETS_EXPORT, FK_STRINGIFY(Q_DECL_EXPORT));
+#else
+CHECK_EXPORT(WINDOWHELER_MATERIAL_WIDGETS_EXPORT, DEFAULT_FRONTEND_EXPORT);
+#endif
+#if defined(WINDOWHELER_BUILD_MATERIALQUICK)
+CHECK_EXPORT(WINDOWHELER_MATERIAL_QUICK_EXPORT, FK_STRINGIFY(Q_DECL_EXPORT));
+#else
+CHECK_EXPORT(WINDOWHELER_MATERIAL_QUICK_EXPORT, DEFAULT_FRONTEND_EXPORT);
 #endif
 } // namespace

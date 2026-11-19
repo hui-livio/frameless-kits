@@ -5,8 +5,6 @@ windowheler_configure_target(windowheler_runtime Runtime)
 target_sources(windowheler_runtime PRIVATE
     Initialization.cpp
     Runtime_p.h
-    RuntimeContext_p.h
-    RuntimeContext.cpp
     WindowController.cpp
     WindowController.h
     HostAdapter_p.h

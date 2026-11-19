@@ -36,14 +36,11 @@ private slots:
         QQuickItem bar(window.contentItem()), button(&bar);
         Agent agent;
         agent.classBegin();
-        agent.setMaterial(Agent::Material::Mica);
         agent.setTitleBar(&bar);
         agent.setWindow(&window);
         auto list = agent.interactiveItems();
         list.append(&list, &button);
         agent.componentComplete();
-        QCOMPARE(agent.material(), Agent::Material::Mica);
-        QCOMPARE(agent.effectiveMaterial(), Agent::Material::Solid);
         QCOMPARE(list.count(&list), 1);
         QCOMPARE(list.at(&list, 0), &button);
         list.removeLast(&list);
@@ -58,7 +55,6 @@ private slots:
         agent.setWindow(nullptr);
         QVERIFY(!agent.window());
         agent.setWindow(&window);
-        QCOMPARE(agent.material(), Agent::Material::Mica);
     }
     void destroyedItemsAndHost()
     {
@@ -75,7 +71,6 @@ private slots:
         QCOMPARE(list.count(&list), 0);
         delete window;
         QVERIFY(!agent.window());
-        QCOMPARE(agent.effectiveMaterial(), Agent::Material::Solid);
     }
 };
 int main(int argc, char** argv)
