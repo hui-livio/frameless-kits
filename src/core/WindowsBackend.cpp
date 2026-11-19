@@ -85,6 +85,8 @@ public:
     }
     bool nativeEventFilter(const QByteArray&, void* message, qintptr* result) override
     {
+        if (!message || !result)
+            return false;
         const auto* msg = static_cast<const MSG*>(message);
         if (!m_framelessEnabled || !m_hwnd || msg->hwnd != m_hwnd || msg->message != WM_NCCALCSIZE)
             return false;
@@ -235,8 +237,10 @@ protected:
         m_materialSurfaceRefreshed      = false;
         m_materialSurfaceRefreshPending = false;
         m_hwnd                          = nullptr;
+        m_nativeTopInset                 = false;
         const bool hadNativeFrame = std::exchange(m_nativeFrameApplied, false);
         const quint64 generation = ++m_generation;
+        m_host.setNativeTopInset(false);
         // Detach before callbacks. A nested synchronization can then create a
         // fresh binding without recursing into cleanup of this same binding.
         const bool captured = m_pressed;
@@ -299,6 +303,7 @@ private:
         BOOL composition = FALSE;
         if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
         {
+            m_nativeTopInset = false;
             m_host.setNativeTopInset(false);
             return;
         }
@@ -316,7 +321,8 @@ private:
         if (WindowsMaterial::usesSystemBackdrop(material))
             margins.cxLeftWidth = 65536;
         const bool extended = SUCCEEDED(DwmExtendFrameIntoClientArea(m_hwnd, &margins));
-        m_host.setNativeTopInset(extended && margins.cyTopHeight == 1);
+        m_nativeTopInset = extended && margins.cyTopHeight == 1;
+        m_host.setNativeTopInset(m_nativeTopInset);
     }
     void scheduleMaterialSurfaceRefresh()
     {
@@ -368,7 +374,9 @@ private:
     }
     void drawNativeTopBorder()
     {
-        if (!m_hwnd || isWindows11() || m_host.fullScreen() || IsZoomed(m_hwnd) || IsIconic(m_hwnd)) return;
+        if (!m_nativeTopInset || !m_hwnd || isWindows11() || m_host.fullScreen() || IsZoomed(m_hwnd) ||
+            IsIconic(m_hwnd))
+            return;
         HDC dc = GetDC(m_hwnd);
         if (!dc) return;
         RECT rect{}; GetClientRect(m_hwnd, &rect); rect.bottom = 1;
@@ -610,6 +618,29 @@ private:
         case WM_NCHITTEST:
             result = hitTest({ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) });
             return true;
+        case WM_NCPAINT:
+        {
+            BOOL composition = FALSE;
+            if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
+            {
+                result = FALSE;
+                return true;
+            }
+            return false;
+        }
+        case WM_NCACTIVATE:
+        {
+            BOOL composition = FALSE;
+            if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
+            {
+                result = TRUE;
+                return true;
+            }
+            // Passing -1 asks DefWindowProc to refresh the non-client border
+            // without repainting the client area.
+            result = DefWindowProcW(m_hwnd, WM_NCACTIVATE, wParam, -1);
+            return true;
+        }
         case WM_WINDOWPOSCHANGING:
         {
             constexpr UINT staleFrameFlags =
@@ -751,6 +782,7 @@ private:
     bool m_nativeFilterInstalled         = false;
     bool m_materialSurfaceRefreshed       = false;
     bool m_materialSurfaceRefreshPending  = false;
+    bool m_nativeTopInset                 = false;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;
     bool m_haveOriginalPolicy = false;
     HWND m_hwnd              = nullptr;
