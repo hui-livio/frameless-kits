@@ -1,5 +1,8 @@
 #include <WindowHeler/Initialization.h>
 #include <WindowHeler/FramelessWidgetAgent.h>
+#ifdef TEST_WINDOW_MATERIAL
+#include <WindowHeler/MaterialWidgetAgent.h>
+#endif
 #include <QApplication>
 #include <QPushButton>
 #include <QWidget>
@@ -50,6 +53,26 @@ private slots:
         delete window;
         QVERIFY(!guard);
     }
+#ifdef TEST_WINDOW_MATERIAL
+    void preservesApplicationBackgroundChanges()
+    {
+        using namespace WindowHeler;
+        QWidget window;
+        window.resize(240, 120);
+        MaterialWidgetAgent material(&window);
+        material.setMaterial(Material::Transparent);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(material.effectiveMaterial(), Material::Transparent);
+
+        window.setAttribute(Qt::WA_OpaquePaintEvent, true);
+        window.setAutoFillBackground(true);
+        material.setMaterial(Material::Solid);
+        QTRY_COMPARE(material.effectiveMaterial(), Material::Solid);
+        QVERIFY(window.testAttribute(Qt::WA_OpaquePaintEvent));
+        QVERIFY(window.autoFillBackground());
+    }
+#endif
 };
 int main(int argc, char** argv)
 {

@@ -18,6 +18,10 @@ windowheler_add_test(windowheler_runtime_tests RuntimeTests.cpp)
 
 if(TARGET WindowHeler::FramelessWidgets)
     windowheler_add_test(windowheler_widgets_tests WidgetsTests.cpp WindowHeler::FramelessWidgets)
+    if(TARGET WindowHeler::MaterialWidgets)
+        target_link_libraries(windowheler_widgets_tests PRIVATE WindowHeler::MaterialWidgets)
+        target_compile_definitions(windowheler_widgets_tests PRIVATE TEST_WINDOW_MATERIAL)
+    endif()
 endif()
 
 if(TARGET WindowHeler::FramelessQuick)
