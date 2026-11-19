@@ -13,7 +13,8 @@ public:
     Material applied   = Material::Solid;
     bool pending       = false;
 
-    bool apply(PlatformBackend& backend, HostAdapter& host, QString& error)
+    bool apply(PlatformBackend& backend, HostWindowAdapter& windowHost, HostMaterialAdapter& materialHost,
+               QString& error)
     {
         pending                  = false;
         const Material candidate = requested;
@@ -25,10 +26,11 @@ public:
         {
             pending = true;
             // Unavailability alone does not confirm that native cleanup succeeded.
-            host.setMaterialBackground(applied != Material::Solid);
+            materialHost.setMaterialBackground(applied != Material::Solid);
             return true;
         }
-        const bool surfaceAvailable = candidate == Material::Solid || host.materialSurfaceAvailable(error);
+        const bool surfaceAvailable = candidate == Material::Solid ||
+                                       materialHost.materialSurfaceAvailable(windowHost.window(), error);
         if (!lifetime)
             return true;
         if (surfaceAvailable)
@@ -37,7 +39,7 @@ public:
             {
                 // Native backdrop must see a transparent Qt host when configured.
                 // A colorChanged handler may destroy/rebind the Agent synchronously.
-                host.setMaterialBackground(true);
+                materialHost.setMaterialBackground(true);
                 if (!lifetime)
                     return true;
             }
@@ -48,7 +50,7 @@ public:
             {
                 applied = candidate;
                 if (candidate == Material::Solid)
-                    host.setMaterialBackground(false);
+                    materialHost.setMaterialBackground(false);
                 return true;
             }
         }
@@ -65,7 +67,7 @@ public:
         if (!fallbackError.isEmpty())
             error += QStringLiteral(" Fallback cleanup: ") + fallbackError;
         // Failed cleanup retains the last confirmed material and its host background.
-        host.setMaterialBackground(applied != Material::Solid);
+        materialHost.setMaterialBackground(applied != Material::Solid);
         return false;
     }
 };

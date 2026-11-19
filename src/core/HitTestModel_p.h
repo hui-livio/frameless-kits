@@ -32,7 +32,7 @@ public:
         ++revision;
     }
 
-    HitRegion hitTest(const HostAdapter& host, QPointF point) const
+    HitRegion hitTest(const HostWindowAdapter& windowHost, const HostInputAdapter& inputHost, QPointF point) const
     {
         const QPointer<QObject> owner = m_owner;
         const bool hasOwner           = m_hasOwner;
@@ -46,7 +46,7 @@ public:
         const auto titleBarSnapshot    = titleBar;
         const auto maximizeSnapshot    = maximizeButton;
         const auto interactiveSnapshot = interactiveItems;
-        const bool fullscreen          = host.fullScreen();
+        const bool fullscreen          = windowHost.fullScreen();
         if (!current() || fullscreen)
             return HitRegion::Client;
 
@@ -57,12 +57,12 @@ public:
                 return false;
             if (!item)
                 return true;
-            const bool owned = host.owns(item);
+            const bool owned = inputHost.owns(item);
             if (!current())
                 return false;
             if (!owned || !item)
                 return true;
-            hit = host.contains(item, point);
+            hit = inputHost.contains(item, point);
             // A custom containment mask can destroy the controller or change registrations.
             return current();
         };
@@ -72,7 +72,7 @@ public:
             return HitRegion::Client;
         if (maximizeHit)
         {
-            const bool maximizable = canMaximize(host);
+            const bool maximizable = canMaximize(windowHost);
             if (!current())
                 return HitRegion::Client;
             if (maximizable && maximizeSnapshot)
@@ -101,6 +101,11 @@ public:
         if (!contains(titleBarSnapshot, titleBarHit))
             return HitRegion::Client;
         return titleBarHit ? HitRegion::Caption : HitRegion::Client;
+    }
+
+    HitRegion hitTest(const HostAdapter& host, QPointF point) const
+    {
+        return hitTest(static_cast<const HostWindowAdapter&>(host), static_cast<const HostInputAdapter&>(host), point);
     }
 
 private:

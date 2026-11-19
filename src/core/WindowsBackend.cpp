@@ -467,7 +467,8 @@ private:
             if (edges)
                 return edgeHit(edges);
         }
-        switch (m_hitTest.hitTest(m_host, logicalPoint(screen)))
+        switch (m_hitTest.hitTest(static_cast<const HostWindowAdapter&>(m_host),
+                                  static_cast<const HostInputAdapter&>(m_host), logicalPoint(screen)))
         {
         case HitRegion::Caption:
             return HTCAPTION;

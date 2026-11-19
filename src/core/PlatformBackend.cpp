@@ -346,7 +346,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
         event->accept();
         return true;
     }
-    const auto region = m_hitTest.hitTest(m_host, point);
+    const auto region = m_hitTest.hitTest(static_cast<const HostWindowAdapter&>(m_host),
+                                          static_cast<const HostInputAdapter&>(m_host), point);
     // Quick containment masks may execute application code during hit testing.
     if (!guard || !receiver || !window)
         return true;

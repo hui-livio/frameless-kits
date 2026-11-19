@@ -268,7 +268,7 @@ void WindowController::refreshMaterial()
     const auto previous  = m_material.applied;
     const auto requested = m_material.requested;
     QString error;
-    const bool ok = m_material.apply(*m_backend, *m_host, error);
+    const bool ok = m_material.apply(*m_backend, *m_host, *m_host, error);
     if (!guard)
         return;
     m_applyingMaterial = false;
@@ -287,6 +287,7 @@ HitRegion WindowController::hitTest(QPointF point) const
 {
     if (!checkGuiThread("Agent hit test") || !m_bound)
         return HitRegion::Client;
-    return m_hitTest.hitTest(*m_host, point);
+    return m_hitTest.hitTest(static_cast<const HostWindowAdapter&>(*m_host),
+                             static_cast<const HostInputAdapter&>(*m_host), point);
 }
 } // namespace WindowHeler::Internal

@@ -80,11 +80,11 @@ class QuickHostAdapter final : public Internal::QuickBackgroundHost
 {
 public:
     using QuickBackgroundHost::QuickBackgroundHost;
-    bool materialSurfaceAvailable(QString& error) const override
+    bool materialSurfaceAvailable(QWindow* window, QString& error) const override
     {
         if (m_surface && m_surface->available())
             return true;
-        return HostAdapter::materialSurfaceAvailable(error);
+        return HostMaterialAdapter::materialSurfaceAvailable(window, error);
     }
     void materialSurfaceDestroyed() override
     {

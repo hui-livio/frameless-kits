@@ -10,15 +10,13 @@
 namespace WindowHeler::Internal
 {
 // Implemented by UI adapters; Core never includes Widgets or Quick headers.
-class HostAdapter
+class HostWindowAdapter
 {
 public:
-    virtual ~HostAdapter()                                                = default;
+    virtual ~HostWindowAdapter() = default;
     virtual QObject* host() const                                         = 0;
     // Queries must never create a native surface.
     virtual QWindow* window() const                                       = 0;
-    virtual bool owns(const QObject* item) const                          = 0;
-    virtual bool contains(const QObject* item, QPointF windowPoint) const = 0;
     virtual bool fullScreen() const                                       = 0;
     virtual Qt::WindowFlags flags() const
     {
@@ -57,12 +55,33 @@ public:
         if (window())
             window()->close();
     }
+};
+
+class HostInputAdapter
+{
+public:
+    virtual ~HostInputAdapter()                                           = default;
+    virtual bool owns(const QObject* item) const                          = 0;
+    virtual bool contains(const QObject* item, QPointF windowPoint) const = 0;
+    virtual bool supportsMaximizeButton(const QObject*) const
+    {
+        return false;
+    }
+    // Mouse positions are logical client coordinates. No business command is executed here.
+    virtual void buttonEvent(QObject*, QEvent::Type, QPointF, Qt::MouseButton, Qt::MouseButtons) {}
+    virtual void cancelButton(QObject*) {}
+};
+
+class HostMaterialAdapter
+{
+public:
+    virtual ~HostMaterialAdapter() = default;
     // Reserve alpha before first native surface creation; never create a handle.
     virtual void prepareMaterialSurface() {}
     virtual void materialSurfaceDestroyed() {}
-    virtual bool materialSurfaceAvailable(QString& error) const
+    virtual bool materialSurfaceAvailable(QWindow* window, QString& error) const
     {
-        if (window() && window()->format().alphaBufferSize() > 0)
+        if (window && window->format().alphaBufferSize() > 0)
             return true;
         error = QStringLiteral("Material requires an alpha surface. Bind the Agent before first show; "
                                "an existing opaque surface is not recreated implicitly.");
@@ -74,12 +93,11 @@ public:
     }
     virtual void setMaterialBackground(bool) {}
     virtual void setNativeTopInset(bool) {}
-    virtual bool supportsMaximizeButton(const QObject*) const
-    {
-        return false;
-    }
-    // Mouse positions are logical client coordinates. No business command is executed here.
-    virtual void buttonEvent(QObject*, QEvent::Type, QPointF, Qt::MouseButton, Qt::MouseButtons) {}
-    virtual void cancelButton(QObject*) {}
+};
+
+class HostAdapter : public HostWindowAdapter, public HostInputAdapter, public HostMaterialAdapter
+{
+public:
+    ~HostAdapter() override = default;
 };
 } // namespace WindowHeler::Internal

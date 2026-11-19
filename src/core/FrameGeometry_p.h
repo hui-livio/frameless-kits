@@ -3,21 +3,21 @@
 
 namespace WindowHeler::Internal
 {
-inline bool windowCapability(const HostAdapter& host, Qt::WindowType hint)
+inline bool windowCapability(const HostWindowAdapter& host, Qt::WindowType hint)
 {
     return host.windowCapability(hint);
 }
-inline bool canResizeWidth(const HostAdapter& host)
+inline bool canResizeWidth(const HostWindowAdapter& host)
 {
     return !host.flags().testFlag(Qt::MSWindowsFixedSizeDialogHint) &&
            host.minimumSize().width() < host.maximumSize().width();
 }
-inline bool canResizeHeight(const HostAdapter& host)
+inline bool canResizeHeight(const HostWindowAdapter& host)
 {
     return !host.flags().testFlag(Qt::MSWindowsFixedSizeDialogHint) &&
            host.minimumSize().height() < host.maximumSize().height();
 }
-inline bool canMaximize(const HostAdapter& host)
+inline bool canMaximize(const HostWindowAdapter& host)
 {
     return windowCapability(host, Qt::WindowMaximizeButtonHint) && canResizeWidth(host) && canResizeHeight(host);
 }
