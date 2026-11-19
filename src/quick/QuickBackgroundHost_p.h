@@ -65,9 +65,17 @@ private:
 class QuickBackgroundHost : public HostAdapter
 {
 public:
-    explicit QuickBackgroundHost(QQuickWindow* window) : m_window(window) {}
+    explicit QuickBackgroundHost(QQuickWindow* window) : m_window(window)
+    {
+        if (m_window)
+        {
+            m_colorConnection = QObject::connect(m_window, &QQuickWindow::colorChanged, m_window,
+                                                 [this](const QColor& color) { handleColorChanged(color); });
+        }
+    }
     ~QuickBackgroundHost() override
     {
+        QObject::disconnect(m_colorConnection);
         m_inset = m_materialBackground = false;
         synchronize();
     }
@@ -97,6 +105,30 @@ protected:
     QPointer<QQuickWindow> m_window;
 
 private:
+    void setWindowColor(const QColor& color)
+    {
+        if (!m_window)
+            return;
+        m_colorChangeGuard = true;
+        m_window->setColor(color);
+        m_colorChangeGuard = false;
+        m_lastOwnedColor   = color;
+    }
+    void handleColorChanged(const QColor& color)
+    {
+        if (m_colorChangeGuard || !m_ownsClear || !m_window)
+            return;
+        if (color == QColor(Qt::transparent))
+        {
+            m_applicationClearedColor = true;
+            return;
+        }
+        m_originalColor             = color;
+        m_applicationClearedColor  = false;
+        if (m_fill)
+            m_fill->setFill(color);
+        setWindowColor(Qt::transparent);
+    }
     void synchronize()
     {
         if (!m_window)
@@ -104,37 +136,32 @@ private:
         const bool ownsClear = m_inset || m_materialBackground;
         if (ownsClear && (!m_ownsClear || m_window->color() != QColor(Qt::transparent)))
             m_originalColor = m_window->color();
-        const bool restore = m_ownsClear && !ownsClear && m_window->color() == QColor(Qt::transparent);
+        const bool restore = m_ownsClear && !ownsClear && !m_applicationClearedColor &&
+                             m_window->color() == m_lastOwnedColor;
         m_ownsClear        = ownsClear;
         if (m_inset && !m_materialBackground)
         {
             if (!m_fill)
             {
                 m_fill = new InsetQuickBackground(m_window);
-                QObject::connect(m_window, &QQuickWindow::colorChanged, m_fill,
-                                 [this](const QColor& color)
-                                 {
-                                     if (color != QColor(Qt::transparent))
-                                     {
-                                         m_originalColor = color;
-                                         m_fill->setFill(color);
-                                         m_window->setColor(Qt::transparent);
-                                     }
-                                 });
             }
             m_fill->setFill(m_originalColor);
         }
         else
             delete m_fill.data();
         if (ownsClear && m_window->color() != QColor(Qt::transparent))
-            m_window->setColor(Qt::transparent);
+            setWindowColor(Qt::transparent);
         else if (restore)
-            m_window->setColor(m_originalColor);
+            setWindowColor(m_originalColor);
     }
     QPointer<InsetQuickBackground> m_fill;
+    QMetaObject::Connection m_colorConnection;
     QColor m_originalColor;
+    QColor m_lastOwnedColor;
     bool m_materialBackground = false;
     bool m_inset              = false;
     bool m_ownsClear          = false;
+    bool m_colorChangeGuard   = false;
+    bool m_applicationClearedColor = false;
 };
 } // namespace WindowHeler::Internal
