@@ -287,8 +287,17 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     auto edges = currentEdges();
     if (event->type() == QEvent::MouseMove && !mouse->buttons())
     {
+        // Wayland may finish a compositor-owned move without sending the
+        // matching release back through the Qt window. The next pointer
+        // event must start from an idle state or its release would be
+        // consumed as the end of the old system operation.
+        if (m_mouseState == MouseState::SystemOperation)
+            m_mouseState = MouseState::Idle;
         return !updateCursor(window, edges) || !receiver;
     }
+    if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton &&
+        m_mouseState == MouseState::SystemOperation)
+        m_mouseState = MouseState::Idle;
     if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::LeftButton)
     {
         const bool handled = m_mouseState != MouseState::Idle;
