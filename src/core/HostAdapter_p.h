@@ -73,6 +73,7 @@ public:
         return QColor(Qt::white);
     }
     virtual void setMaterialBackground(bool) {}
+    virtual void setNativeTopInset(bool) {}
     virtual bool supportsMaximizeButton(const QObject*) const
     {
         return false;

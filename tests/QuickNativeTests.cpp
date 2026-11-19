@@ -6,6 +6,7 @@
 #include <WindowHeler/MaterialAgent.h>
 #endif
 #include <QGuiApplication>
+#include <QOperatingSystemVersion>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -18,6 +19,47 @@ class QuickNativeTests : public QObject
     Q_OBJECT
 private slots:
 #ifdef TEST_WINDOW_MATERIAL
+    void solidLeavesOneNativeTopPixel_data()
+    {
+        QTest::addColumn<bool>("materialFirst");
+        QTest::newRow("frameless-first") << false;
+        QTest::newRow("material-first") << true;
+    }
+    void solidLeavesOneNativeTopPixel()
+    {
+        if (QOperatingSystemVersion::current().microVersion() >= 22000)
+            QSKIP("Windows 11 keeps its native top border outside the Quick scene.");
+        QFETCH(bool, materialFirst);
+        QQuickWindow window;
+        window.resize(200, 120);
+        const QColor fill(17, 83, 149);
+        window.setColor(fill);
+        WindowHeler::FramelessAgent frame;
+        WindowHeler::MaterialAgent material;
+        if (materialFirst)
+            material.setWindow(&window);
+        frame.setWindow(&window);
+        if (!materialFirst)
+            material.setWindow(&window);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto rowsMatch = [&](int firstAlpha, QColor second) {
+            const QImage image = window.grabWindow();
+            return image.height() >= 2 && image.pixelColor(image.width() / 2, 0).alpha() == firstAlpha &&
+                   image.pixelColor(image.width() / 2, 1) == second;
+        };
+        QTRY_VERIFY(rowsMatch(0, fill));
+        material.setMaterial(WindowHeler::Material::Transparent);
+        QTRY_VERIFY(rowsMatch(0, Qt::transparent));
+        material.setMaterial(WindowHeler::Material::Solid);
+        QTRY_VERIFY(rowsMatch(0, fill));
+        window.showMaximized();
+        QTRY_VERIFY(rowsMatch(255, fill));
+        window.showNormal();
+        QTRY_VERIFY(rowsMatch(0, fill));
+        frame.setWindow(nullptr);
+        QTRY_COMPARE(window.color(), fill);
+    }
     void declarativeFrameAndInitialMaterial()
     {
         using namespace WindowHeler;

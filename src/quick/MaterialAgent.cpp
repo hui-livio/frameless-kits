@@ -1,5 +1,6 @@
 #include "../core/Runtime_p.h"
 #include "../core/WindowController.h"
+#include "QuickBackgroundHost_p.h"
 
 #include <WindowHeler/MaterialAgent.h>
 #include <QCoreApplication>
@@ -70,14 +71,10 @@ private:
     bool confirmed = false;
 };
 
-class QuickHostAdapter final : public Internal::HostAdapter
+class QuickHostAdapter final : public Internal::QuickBackgroundHost
 {
 public:
-    explicit QuickHostAdapter(QQuickWindow* window) : m_window(window) {}
-    ~QuickHostAdapter() override
-    {
-        setMaterialBackground(false);
-    }
+    using QuickBackgroundHost::QuickBackgroundHost;
     bool materialSurfaceAvailable(QString& error) const override
     {
         if (m_surface && m_surface->available())
@@ -104,24 +101,6 @@ public:
         if (!m_surface)
             m_surface = new QuickMaterialSurface(m_window);
         m_surface->prepare();
-    }
-    QColor materialColor() const override
-    {
-        const QColor color = m_background ? m_originalColor : (m_window ? m_window->color() : QColor{});
-        return color.isValid() && color.alpha() > 0 ? color : QGuiApplication::palette().color(QPalette::Window);
-    }
-    void setMaterialBackground(bool enabled) override
-    {
-        if (!m_window || enabled == m_background)
-            return;
-        m_background = enabled;
-        if (enabled)
-        {
-            m_originalColor = m_window->color();
-            m_window->setColor(Qt::transparent);
-        }
-        else if (m_window->color() == QColor(Qt::transparent))
-            m_window->setColor(m_originalColor);
     }
     QObject* host() const override
     {
@@ -225,10 +204,7 @@ public:
     }
 
 private:
-    QPointer<QQuickWindow> m_window;
     QPointer<QuickMaterialSurface> m_surface;
-    QColor m_originalColor;
-    bool m_background = false;
 };
 
 } // namespace

@@ -199,7 +199,7 @@ $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
 | `Mica` / `MicaAlt` | Windows 11 22H2 / build 22621+ 的系统 backdrop | 不支持，回退 Solid | 不支持，回退 Solid |
 
 - 在首次 `show()` 前绑定 Agent；QML 在自己的 Window 内声明 Agent，并在创建窗口前调用 `initialize(true)`。模块预留 alpha 表面，不会为了切换材质隐式销毁/重建已有窗口。已创建的不透明表面会明确诊断并降级。
-- Widgets 仅调整顶层背景相关属性；Quick 仅调整窗口清屏颜色。切回 Solid 或解绑时恢复本模块接管的状态，不改变业务控件的 opacity、不强制更换渲染器/Controls 样式。已有自定义 paintEvent、样式表背景或不透明 QML 面板仍可能遮挡材质。
+- Widgets 仅调整顶层背景相关属性；Quick 调整窗口清屏颜色。Win10 无边框普通窗口的 `Solid` 保留顶部 1 个物理像素透明，其余区域绘制原窗口底色，让系统边框透出。业务内容的位置与 opacity 不变；自行铺满窗口的不透明 QML 面板仍可能覆盖该行或遮挡材质。解绑时恢复模块接管的背景状态。
 - Windows 保留原生 DWM 边框与阴影。现代 Acrylic / Mica / MicaAlt 使用系统 backdrop；`WINDOWHELER_ENABLE_LEGACY_ACCENT=ON` 仅为 Blur 动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代系统 backdrop。
 - Windows 合成关闭、远程会话、高对比度或系统透明效果关闭，以及 macOS“减少透明度”，会导致非 Solid 请求降级。主题/调色板、系统策略和原生表面生命周期变化会重新应用所保留的请求。
 - `effectiveMaterial` 表示配置成功，不保证合成器此刻一定显示某种视觉效果。窗口未具备原生表面时请求保持 pending，实际配置暂为 Solid；初始化完成后自动重放。此属性不能替代实机观察。

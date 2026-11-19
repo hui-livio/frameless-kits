@@ -98,7 +98,7 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 
 - 在 HWND 绑定时准备深色原生边框，补齐 qwindowkit 的 UxTheme 原生主题支持与菜单缓存刷新。Windows 10 1903+ 使用 `SetPreferredAppMode(AllowDark/PAM_AUTO)`，1809 使用旧版 `AllowDarkModeForApp`；不设置 ForceDark，不修改 Qt 调色板或渲染器。该原生菜单主题能力是进程级设置，单窗口解绑不关闭它，避免影响其他受管窗口。DWM 明暗属性仍保存、按归属恢复。
 - Solid / Transparent / Blur 使用深色原生边框；系统 backdrop 保持按宿主背景选择明暗。移除试验中的 Win11 显式边框颜色和首次材质延迟刷新，未将它们当作上游修复保留。
-- Win10 普通材质包含 Blur 均使用 top 1px frame 扩展。Qt Widgets 顶边在 Expose / UpdateRequest 完成后绘制；Quick 不自绘顶边；Windows 10 下不透明的 Quick 客户区可能遮住系统顶边，Windows 11 继续使用系统顶边；主题、系统颜色、DWM 强调色变化重新应用外观。框架变更采用 qwindowkit 的 `SWP_NOCOPYBITS` 处理。
+- Win10 普通材质包含 Blur 均使用 top 1px frame 扩展。Qt Widgets 顶边在 Expose / UpdateRequest 完成后绘制；Quick 不自绘顶边：扩展成功时透明清屏，`Solid` 在业务内容下方从第二行物理像素起填充窗口原色。最大化、全屏或解除无边框绑定时不预留该行。Windows 11 继续使用系统顶边；主题、系统颜色、DWM 强调色变化重新应用外观。框架变更采用 qwindowkit 的 `SWP_NOCOPYBITS` 处理。
 - 两项上游 workaround 不直接移植：失焦时扩展整个标题栏会在当前预留 alpha 的宿主上露出深色标题带；WM_SHOWWINDOW 中增减 1px 会导致当前 Quick 窗口隐藏/显示后几何变化。保留普通 top 1px 和已有 Quick 首次材质表面刷新，已撤销这两项回归。
 - Win10 build 19045 的受控捕获中，Widgets example 首次透明 / Blur 切换没有纯白边框；两端 Blur 失焦后没有顶部白线。自动下拉框探针仍显示 popup 状态，不能替代真实点击关闭下拉框的人工验收。用户实际首次切换场景仍须复查。Win11 / macOS 视觉效果未在本轮验证。
 - Qt 6.8 的 `WM_NCCALCSIZE` 在 `QAbstractNativeEventFilter` 中完成客户区修正，子类化窗口过程直接转发该消息给 Qt，避免在 Qt 已缓存普通标题栏边距后再覆盖矩形。仍用 `SetWindowSubclass` 维护每个窗口的过程链，原生过滤器只处理自身 HWND 的尺寸消息。

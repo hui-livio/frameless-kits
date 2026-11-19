@@ -297,7 +297,11 @@ private:
     void updateDwmFrame(Material material)
     {
         BOOL composition = FALSE;
-        if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition) return;
+        if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
+        {
+            m_host.setNativeTopInset(false);
+            return;
+        }
         const DWMNCRENDERINGPOLICY policy = DWMNCRP_ENABLED;
         DwmSetWindowAttribute(m_hwnd, DWMWA_NCRENDERING_POLICY, &policy, sizeof(policy));
         // Like qwindowkit's ordinary margins, keep the Win10 top edge extended.
@@ -311,7 +315,8 @@ private:
         // hidden caption when Windows accent-colored title bars are enabled.
         if (WindowsMaterial::usesSystemBackdrop(material))
             margins.cxLeftWidth = 65536;
-        DwmExtendFrameIntoClientArea(m_hwnd, &margins);
+        const bool extended = SUCCEEDED(DwmExtendFrameIntoClientArea(m_hwnd, &margins));
+        m_host.setNativeTopInset(extended && margins.cyTopHeight == 1);
     }
     void scheduleMaterialSurfaceRefresh()
     {
