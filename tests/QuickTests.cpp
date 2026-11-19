@@ -2,6 +2,9 @@
 
 #include <WindowHeler/Initialization.h>
 #include <WindowHeler/FramelessAgent.h>
+#ifdef TEST_WINDOW_MATERIAL
+#include <WindowHeler/MaterialAgent.h>
+#endif
 #include <QGuiApplication>
 #include <QQuickWindow>
 #include <QtTest>
@@ -72,6 +75,27 @@ private slots:
         delete window;
         QVERIFY(!agent.window());
     }
+#ifdef TEST_WINDOW_MATERIAL
+    void preservesApplicationColorChanges()
+    {
+        using namespace WindowHeler;
+        QQuickWindow window;
+        window.resize(240, 120);
+        window.setColor(QColor("steelblue"));
+        MaterialAgent material;
+        material.setWindow(&window);
+        material.setMaterial(Material::Transparent);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_COMPARE(material.effectiveMaterial(), Material::Transparent);
+
+        window.setColor(QColor("tomato"));
+        window.setColor(Qt::transparent);
+        material.setMaterial(Material::Solid);
+        QTRY_COMPARE(material.effectiveMaterial(), Material::Solid);
+        QCOMPARE(window.color(), QColor(Qt::transparent));
+    }
+#endif
 };
 int main(int argc, char** argv)
 {

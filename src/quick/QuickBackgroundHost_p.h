@@ -118,13 +118,10 @@ private:
     {
         if (m_colorChangeGuard || !m_ownsClear || !m_window)
             return;
+        m_applicationChangedColor = true;
         if (color == QColor(Qt::transparent))
-        {
-            m_applicationClearedColor = true;
             return;
-        }
         m_originalColor             = color;
-        m_applicationClearedColor  = false;
         if (m_fill)
             m_fill->setFill(color);
         setWindowColor(Qt::transparent);
@@ -136,7 +133,9 @@ private:
         const bool ownsClear = m_inset || m_materialBackground;
         if (ownsClear && (!m_ownsClear || m_window->color() != QColor(Qt::transparent)))
             m_originalColor = m_window->color();
-        const bool restore = m_ownsClear && !ownsClear && !m_applicationClearedColor &&
+        if (ownsClear && !m_ownsClear)
+            m_applicationChangedColor = false;
+        const bool restore = m_ownsClear && !ownsClear && !m_applicationChangedColor &&
                              m_window->color() == m_lastOwnedColor;
         m_ownsClear        = ownsClear;
         if (m_inset && !m_materialBackground)
@@ -162,6 +161,6 @@ private:
     bool m_inset              = false;
     bool m_ownsClear          = false;
     bool m_colorChangeGuard   = false;
-    bool m_applicationClearedColor = false;
+    bool m_applicationChangedColor = false;
 };
 } // namespace WindowHeler::Internal

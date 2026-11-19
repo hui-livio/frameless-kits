@@ -26,6 +26,10 @@ endif()
 
 if(TARGET WindowHeler::FramelessQuick)
     windowheler_add_test(windowheler_quick_tests QuickTests.cpp WindowHeler::FramelessQuick)
+    if(TARGET WindowHeler::MaterialQuick)
+        target_link_libraries(windowheler_quick_tests PRIVATE WindowHeler::MaterialQuick)
+        target_compile_definitions(windowheler_quick_tests PRIVATE TEST_WINDOW_MATERIAL)
+    endif()
 endif()
 
 if(TARGET windowheler_widgets_demo)
