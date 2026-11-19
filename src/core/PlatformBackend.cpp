@@ -287,17 +287,8 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     auto edges = currentEdges();
     if (event->type() == QEvent::MouseMove && !mouse->buttons())
     {
-        // Wayland may finish a compositor-owned move without sending the
-        // matching release back through the Qt window. The next pointer
-        // event must start from an idle state or its release would be
-        // consumed as the end of the old system operation.
-        if (m_mouseState == MouseState::SystemOperation)
-            m_mouseState = MouseState::Idle;
         return !updateCursor(window, edges) || !receiver;
     }
-    if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton &&
-        m_mouseState == MouseState::SystemOperation)
-        m_mouseState = MouseState::Idle;
     if (event->type() == QEvent::MouseButtonRelease && mouse->button() == Qt::LeftButton)
     {
         const bool handled = m_mouseState != MouseState::Idle;
@@ -324,29 +315,32 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     {
         if (m_mouseState == MouseState::PreparingMove)
         {
-            m_mouseState       = MouseState::SystemOperation;
             const bool started = window->startSystemMove();
             if (!guard || !receiver || !window)
                 return true;
+            // Once Qt accepts the request, the compositor owns the drag
+            // sequence. Keep the backend idle so a Wayland compositor that
+            // omits the matching release cannot poison the next click.
+            m_mouseState = MouseState::Idle;
             if (!started)
             {
-                m_mouseState = MouseState::Idle;
                 m_diagnostic(QStringLiteral("System move is not supported by this platform."));
             }
             event->accept();
             return true;
         }
-        return m_mouseState == MouseState::SystemOperation;
+        return false;
     }
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton && edges)
     {
-        m_mouseState       = MouseState::SystemOperation;
         const bool started = window->startSystemResize(edges);
         if (!guard || !receiver || !window)
             return true;
+        // The compositor owns a successful resize after this call. Do not
+        // wait for a Qt release event that Wayland may never deliver.
+        m_mouseState = MouseState::Idle;
         if (!started)
         {
-            m_mouseState = MouseState::Idle;
             m_diagnostic(QStringLiteral("System resize is not supported by this platform."));
         }
         event->accept();

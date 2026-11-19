@@ -75,8 +75,7 @@ private:
     enum class MouseState
     {
         Idle,
-        PreparingMove,
-        SystemOperation
+        PreparingMove
     };
     MouseState m_mouseState = MouseState::Idle;
     bool m_forwardingPaint  = false;
