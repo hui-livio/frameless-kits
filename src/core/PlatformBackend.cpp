@@ -315,7 +315,7 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     {
         if (m_mouseState == MouseState::PreparingMove)
         {
-            const bool started = window->startSystemMove();
+            const bool started = startSystemMove(window);
             if (!guard || !receiver || !window)
                 return true;
             // Once Qt accepts the request, the compositor owns the drag
@@ -333,7 +333,7 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     }
     if (event->type() == QEvent::MouseButtonPress && mouse->button() == Qt::LeftButton && edges)
     {
-        const bool started = window->startSystemResize(edges);
+        const bool started = startSystemResize(window, edges);
         if (!guard || !receiver || !window)
             return true;
         // The compositor owns a successful resize after this call. Do not

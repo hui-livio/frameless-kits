@@ -4,11 +4,10 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QWindow>
 #include <array>
 #include <functional>
 #include <memory>
-
-class QWindow;
 
 namespace WindowHeler::Internal
 {
@@ -44,6 +43,14 @@ protected:
     }
     virtual void showSystemMenu(QPointF position);
     virtual void titleBarDoubleClick();
+    virtual bool startSystemMove(QWindow* window)
+    {
+        return window && window->startSystemMove();
+    }
+    virtual bool startSystemResize(QWindow* window, Qt::Edges edges)
+    {
+        return window && window->startSystemResize(edges);
+    }
     virtual void paintNativeFrame() {}
     virtual void synchronizeNative() {}
     virtual void releaseNative(bool) {}
