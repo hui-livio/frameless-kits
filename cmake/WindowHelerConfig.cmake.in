@@ -1,7 +1,11 @@
 @PACKAGE_INIT@
 set(WindowHeler_QML_IMPORT_PATH "@PACKAGE_WINDOWHELER_QML_INSTALL_DIR@")
 include(CMakeFindDependencyMacro)
-find_dependency(Qt6 6.8 COMPONENTS Core Gui)
+if("@WINDOWHELER_PRIVATE_QT_VERSION@" STREQUAL "")
+    find_dependency(Qt6 6.8 COMPONENTS Core Gui)
+else()
+    find_dependency(Qt6 @WINDOWHELER_PRIVATE_QT_VERSION@ EXACT COMPONENTS Core Gui)
+endif()
 if(@WINDOWHELER_BUILD_WIDGETS@)
     find_dependency(Qt6 6.8 COMPONENTS Widgets)
 endif()

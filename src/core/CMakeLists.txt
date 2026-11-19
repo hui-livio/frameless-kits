@@ -84,15 +84,17 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                 #include <QtGui/private/qhighdpiscaling_p.h>
                 #include <wayland-client-core.h>
                 int main() {
-                    using Marshal = decltype(&wl_proxy_marshal_flags);
-                    Marshal marshal = nullptr;
+                    using LegacyMarshal = decltype(&wl_proxy_marshal);
+                    using FlaggedMarshal = decltype(&wl_proxy_marshal_flags);
+                    LegacyMarshal legacy = nullptr;
+                    FlaggedMarshal flagged = nullptr;
                     auto *native = qGuiApp
                         ? qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>() : nullptr;
                     auto *platform = QGuiApplication::platformNativeInterface();
                     QWindow *window = nullptr;
                     const auto point = QHighDpi::toNativeLocalPosition(QPointF(1, 1), window);
                     return native && platform && native->lastInputSeat()
-                        ? int(native->lastInputSerial()) : int(point.x()) + (marshal != nullptr);
+                        ? int(native->lastInputSerial()) : int(point.x()) + (legacy != nullptr) + (flagged != nullptr);
                 }" WINDOWHELER_CAN_USE_WAYLAND)
             cmake_pop_check_state()
             if(WINDOWHELER_CAN_USE_WAYLAND)

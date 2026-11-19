@@ -14,7 +14,7 @@ example/                两个已接通的架构演示
 tests/                  逻辑与生命周期测试、独立安装消费工程
 ```
 
-`WindowHeler::Runtime` 是始终 SHARED 的运行时库，持有跨 DLL 的 WindowContext 注册表、句柄和 Runtime ABI。四个前端 target `WindowHeler::FramelessWidgets`、`WindowHeler::FramelessQuick`、`WindowHeler::MaterialWidgets`、`WindowHeler::MaterialQuick` 只依赖 Runtime；前端 target 根据 `WINDOWHELER_BUILD_SHARED_LIBS` 生成 STATIC/SHARED。库文件名为 `windowhelerruntime`、`framelesswidget`、`framelessquick`、`framelessmaterialwidget`、`framelessmaterialquick`。Widgets 与 Quick 保持独立依赖，不提供 `WindowHeler::Widgets` 或 `WindowHeler::Quick` 组合 target。
+`WindowHeler::Runtime` 是始终 SHARED 的运行时库，持有跨 DLL 的 WindowController 注册表、句柄和 Runtime ABI。四个前端 target `WindowHeler::FramelessWidgets`、`WindowHeler::FramelessQuick`、`WindowHeler::MaterialWidgets`、`WindowHeler::MaterialQuick` 只依赖 Runtime；前端 target 根据 `WINDOWHELER_BUILD_SHARED_LIBS` 生成 STATIC/SHARED。库文件名为 `windowhelerruntime`、`framelesswidget`、`framelessquick`、`framelessmaterialwidget`、`framelessmaterialquick`。Widgets 与 Quick 保持独立依赖，不提供 `WindowHeler::Widgets` 或 `WindowHeler::Quick` 组合 target。
 
 ## 导出与链接配置
 
@@ -24,7 +24,7 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 
 - **Runtime**：检查 QGuiApplication 和 GUI 线程，维护公共/Quick 初始化状态；重复成功调用幂等，false→true 只补 Quick，true→false 不撤销。首次公共初始化不能晚于窗口创建；补 Quick 初始化不能晚于首个 QQuickWindow。
 - **WindowController**：独占逻辑绑定注册表、重复绑定保护、统一错误通知、弱注册对象；只接受本窗口内的对象。销毁解除逻辑绑定，不创建原生句柄。
-- **HostAdapter**：宿主对象、既有 QWindow 查询、对象归属、逻辑坐标命中、全屏状态。QWidget 和 QQuickItem 的映射分别实现；另负责首次创建前预留 alpha、验证既有表面与保存/恢复宿主背景，不隐式重建表面。
+- **HostAdapter 组合接口**：`HostWindowAdapter` 提供宿主窗口和状态，`HostInputAdapter` 提供对象归属、命中和按钮事件，`HostMaterialAdapter` 提供 Alpha surface 与背景接管。Widgets 和 QQuickItem 适配器实现三组接口，Core 通过组合接口协作。
 - **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘由平台后端优先判断；Windows 后端处理模态输入与原生按钮序列。
 - **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再准备透明宿主背景并配置原生效果；成功后提交 applied，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。
 - **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 后端向 X11 / Wayland 合成器请求系统窗口菜单，并用 Qt 公共 API 执行移动/缩放。非原生插件保留 Qt 回退。
