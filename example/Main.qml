@@ -11,12 +11,17 @@ Window {
 
     property int initialMaterial: MaterialAgent.Solid
 
+    SystemPalette {
+        id: systemPalette
+    }
+
     width: 960
     height: 600
     minimumWidth: 760
     minimumHeight: 420
     visible: true
     title: qsTr("无边框模块接口演示")
+    color: systemPalette.window
 
     FramelessAgent {
         id: frame
