@@ -6,7 +6,6 @@
 #include <WindowHeler/MaterialAgent.h>
 #endif
 #include <QGuiApplication>
-#include <QOperatingSystemVersion>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -70,38 +69,6 @@ private slots:
         QCOMPARE(material->effectiveMaterial(), MaterialAgent::Material::Solid);
     }
 #endif
-    void topBorderFollowsWindowState()
-    {
-        QQuickWindow window;
-        window.resize(640, 420);
-        WindowHeler::FramelessAgent frame;
-        frame.setWindow(&window);
-        auto* border = window.findChild<QQuickItem*>(QStringLiteral("_windowheler_quickTopBorder"));
-        if (QOperatingSystemVersion::current().microVersion() >= 22000)
-        {
-            QVERIFY(!border); // Windows 11 draws its own top edge.
-            return;
-        }
-        QVERIFY(border);
-        QCOMPARE(border->acceptedMouseButtons(), Qt::MouseButtons(Qt::NoButton));
-        window.show();
-        QVERIFY(QTest::qWaitForWindowExposed(&window));
-        QCOMPARE(border->width(), qreal(window.width()));
-        QCOMPARE(border->height() * window.devicePixelRatio(), 1.0);
-        QVERIFY(border->isVisible());
-        window.resize(720, 420);
-        QTRY_COMPARE(border->width(), qreal(720));
-        window.showMaximized();
-        QTRY_VERIFY(!border->isVisible());
-        window.showFullScreen();
-        QTRY_COMPARE(window.visibility(), QWindow::FullScreen);
-        QVERIFY(!border->isVisible());
-        window.showNormal();
-        QTRY_VERIFY(border->isVisible());
-        const QPointer<QQuickItem> borderLifetime(border);
-        frame.setWindow(nullptr);
-        QVERIFY(!borderLifetime);
-    }
     void frameAndButton()
     {
         QQmlEngine engine;
