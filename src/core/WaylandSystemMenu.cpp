@@ -21,7 +21,8 @@ namespace
 struct WaylandApi
 {
     QLibrary library{ QStringLiteral("wayland-client"), 0 };
-    decltype(&wl_proxy_marshal_flags) marshal    = nullptr;
+    decltype(&wl_proxy_marshal) marshal          = nullptr;
+    decltype(&wl_proxy_marshal_flags) marshalFlags = nullptr;
     decltype(&wl_proxy_get_version) version      = nullptr;
     decltype(&wl_proxy_get_class) proxyClass     = nullptr;
     decltype(&wl_display_get_error) displayError = nullptr;
@@ -32,7 +33,8 @@ struct WaylandApi
         library.setLoadHints(QLibrary::PreventUnloadHint);
         if (!library.load())
             return;
-        marshal      = reinterpret_cast<decltype(marshal)>(library.resolve("wl_proxy_marshal_flags"));
+        marshal      = reinterpret_cast<decltype(marshal)>(library.resolve("wl_proxy_marshal"));
+        marshalFlags = reinterpret_cast<decltype(marshalFlags)>(library.resolve("wl_proxy_marshal_flags"));
         version      = reinterpret_cast<decltype(version)>(library.resolve("wl_proxy_get_version"));
         proxyClass   = reinterpret_cast<decltype(proxyClass)>(library.resolve("wl_proxy_get_class"));
         displayError = reinterpret_cast<decltype(displayError)>(library.resolve("wl_display_get_error"));
@@ -40,7 +42,7 @@ struct WaylandApi
     }
     bool available() const
     {
-        return marshal && version && proxyClass && displayError && flush;
+        return (marshal || marshalFlags) && version && proxyClass && displayError && flush;
     }
 };
 } // namespace
@@ -121,8 +123,12 @@ bool showWaylandSystemMenu(QWindow* window, QPointF localPosition, bool hasInput
     }
     // xdg_toplevel.show_window_menu is request 4, available since version 1.
     // This request creates no object; the marshaler's null return is not failure.
-    api.marshal(toplevel, 4, nullptr, api.version(toplevel), 0, seat, serial, qint32(qRound(surfacePosition.x())),
-                qint32(qRound(surfacePosition.y())));
+    const qint32 x = qint32(qRound(surfacePosition.x()));
+    const qint32 y = qint32(qRound(surfacePosition.y()));
+    if (api.marshalFlags)
+        api.marshalFlags(toplevel, 4, nullptr, api.version(toplevel), 0, seat, serial, x, y);
+    else
+        api.marshal(toplevel, 4, seat, serial, x, y);
     if (api.displayError(native->display()))
     {
         error = QStringLiteral("The Wayland connection failed while queuing the window menu request.");
