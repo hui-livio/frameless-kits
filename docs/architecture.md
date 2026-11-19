@@ -26,8 +26,8 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 - **WindowController**：独占逻辑绑定注册表、重复绑定保护、统一错误通知、弱注册对象；只接受本窗口内的对象。销毁解除逻辑绑定，不创建原生句柄。
 - **HostAdapter 组合接口**：`HostWindowAdapter` 提供宿主窗口和状态，`HostInputAdapter` 提供对象归属、命中和按钮事件，`HostMaterialAdapter` 提供 Alpha surface 与背景接管。Widgets 和 QQuickItem 适配器实现三组接口，Core 通过组合接口协作。
 - **HitTestModel**：全屏优先；最大化按钮、交互区、标题栏剩余区域、客户区优先级。每次查询复查对象归属和可见区域，销毁或跨窗口移动的对象不能继续充当拖动区。缩放边缘由平台后端优先判断；Windows 后端处理模态输入与原生按钮序列。
-- **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再准备透明宿主背景并配置原生效果；成功后提交 applied，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。
-- **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 后端向 X11 / Wayland 合成器请求系统窗口菜单，并用 Qt 公共 API 执行移动/缩放。非原生插件保留 Qt 回退。
+- **MaterialController**：保留 requested / applied / pending。无原生表面时等待重放；非 Solid 先验证宿主 alpha，再准备透明宿主背景并配置原生效果；成功后提交 applied，失败时清理本模块的效果并恢复背景，实际配置回到 Solid，保留原请求。平台材质对象只维护原生资源归属，不暴露业务材质状态。
+- **PlatformBackend**：原生操作边界。Windows 后端挂接 HWND 消息并保留 DWM 原生边框；macOS Cocoa 后端管理 NSView/NSWindow，保留系统阴影、原生按钮和全屏控制；Linux 后端向 X11 / Wayland 合成器请求系统窗口菜单，并用 Qt 公共 API 执行移动/缩放。系统移动或缩放请求被平台接受后，后端立即结束本地鼠标操作状态。非原生插件保留 Qt 回退。
 
 ## 统一初始化的链接方式
 
@@ -55,7 +55,7 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 - Cocoa 后端只在 Darwin 构建，使用 Objective-C++20 / ARC、AppKit、QuartzCore 与 CoreGraphics；尚无 Mac 编译与 example 运行证据。
 - Windows example 的 DWM 边框/阴影与基本窗口命令已获用户确认，Windows 11 Snap 弹层及跨屏 DPI 仍待验证。
 - Linux 系统菜单接入 X11 `_GTK_SHOW_WINDOW_MENU` 与 Wayland `xdg_toplevel.show_window_menu`；菜单可见性由 WM/compositor 决定，不对未公告能力的桌面伪造成功。移动/缩放仍由 Qt 公共 API 处理；不宣称提供 X11/Wayland 原生窗口阴影。
-- 按当前用户要求，以 Widgets / QML example 的实际效果验收，不新增 UT。
+- Widgets / Quick 背景接管、材质状态和通用输入生命周期均有 offscreen 回归测试；Wayland 合成器菜单可见性与 Cocoa 视觉行为仍需对应平台实机验收。
 - Windows 10 原生 example 的材质切换/降级可运行；Windows 11 系统 backdrop、Cocoa 材质及 Linux 透明仍待平台视觉验收。
 
 ## 材质后端边界
