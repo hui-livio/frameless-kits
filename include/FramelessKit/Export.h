@@ -2,7 +2,7 @@
 #include <QtCore/qglobal.h>
 
 /**
- * @brief The FRAMELESSKIT_CORE_EXPORT macro is used for exporting symbols from the FramelessKit core library.
+ * @brief The FRAMELESSKIT_CORE_EXPORT macro is used for exporting shared Core symbols embedded in the Widgets and Quick libraries.
  * @brief The FRAMELESSKIT_WIDGETS_EXPORT macro is used for exporting symbols from the FramelessKit widgets library.
  * @brief The FRAMELESSKIT_QUICK_EXPORT macro is used for exporting symbols from the FramelessKit quick library.
  */

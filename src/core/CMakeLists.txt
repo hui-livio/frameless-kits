@@ -1,4 +1,5 @@
-qt_add_library(fk_core ${FRAMELESSKIT_LIBRARY_TYPE})
+qt_add_library(fk_core OBJECT)
+set_target_properties(fk_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 framelesskit_configure_target(fk_core Core)
 target_sources(fk_core PRIVATE
     Initialization.cpp

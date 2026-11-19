@@ -4,16 +4,18 @@
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QThread>
+#include <QVariant>
 
 Q_LOGGING_CATEGORY(fkRuntime, "framelesskit.runtime")
 namespace FramelessKit
 {
 namespace
 {
-// Constant initialization avoids cross-DLL/static-bootstrap initialization
-// ordering.
-bool commonInitialized                      = false;
-bool quickInitialized                       = false;
+// Each frontend embeds Core. Keep the initialization flags on the application
+// so both DLLs observe the same state when Widgets and Quick are linked together.
+constexpr auto commonInitializedProperty    = "_framelesskit_common_initialized";
+constexpr auto quickInitializedProperty     = "_framelesskit_quick_initialized";
+// Constant initialization allows the consumer bootstrap to run before main().
 Internal::QuickInitializer quickInitializer = nullptr;
 } // namespace
 namespace Internal
@@ -34,23 +36,25 @@ bool checkGuiThread(const char* operation)
 }
 bool isInitialized(bool quick)
 {
-    return commonInitialized && (!quick || quickInitialized);
+    auto* app = QCoreApplication::instance();
+    return app && app->property(commonInitializedProperty).toBool() &&
+           (!quick || app->property(quickInitializedProperty).toBool());
 }
 } // namespace Internal
 void initialize(bool useQML)
 {
     if (!Internal::checkGuiThread("FramelessKit::initialize"))
         return;
-    if (!commonInitialized)
+    if (!Internal::isInitialized())
     {
         if (!QGuiApplication::allWindows().isEmpty())
         {
             qCCritical(fkRuntime) << "initialize must be called before creating windows";
             return;
         }
-        commonInitialized = true;
+        QCoreApplication::instance()->setProperty(commonInitializedProperty, true);
     }
-    if (!useQML || quickInitialized)
+    if (!useQML || Internal::isInitialized(true))
         return;
     if (!quickInitializer)
     {
@@ -63,6 +67,6 @@ void initialize(bool useQML)
         qCCritical(fkRuntime).noquote() << error;
         return;
     }
-    quickInitialized = true;
+    QCoreApplication::instance()->setProperty(quickInitializedProperty, true);
 }
 } // namespace FramelessKit

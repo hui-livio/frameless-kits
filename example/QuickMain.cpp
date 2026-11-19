@@ -4,12 +4,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QTimer>
-#include <QtQml/QQmlExtensionPlugin>
 #include <cstdlib>
-
-#ifdef FRAMELESSKIT_STATIC
-Q_IMPORT_QML_PLUGIN(FramelessKitPlugin)
-#endif
 
 int main(int argc, char* argv[])
 {

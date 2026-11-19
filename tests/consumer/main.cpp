@@ -10,10 +10,6 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickWindow>
-#include <QtQml/QQmlExtensionPlugin>
-#ifdef FRAMELESSKIT_STATIC
-Q_IMPORT_QML_PLUGIN(FramelessKitPlugin)
-#endif
 #endif
 #include <QDebug>
 #include <memory>
@@ -37,8 +33,17 @@ int main(int argc, char** argv)
     FramelessKit::WidgetAgent agent(&window);
     QWidget titleBar(&window);
     agent.setTitleBar(&titleBar);
-    if (agent.titleBar() != &titleBar)
+    if (agent.titleBar() != &titleBar || !window.windowFlags().testFlag(Qt::FramelessWindowHint))
         return 2;
+    // A failed initialization check leaves the controller unbound. Exercise an
+    // operation that requires a bound controller, including in the mixed DLL case.
+    bool widgetError = false;
+    QObject::connect(&agent, &FramelessKit::WidgetAgent::errorOccurred, &app,
+                     [&](const QString&) { widgetError = true; });
+    agent.setMaterial(FramelessKit::Material::Transparent);
+    QCoreApplication::processEvents();
+    if (widgetError)
+        return 5;
 #endif
 #ifdef CONSUMER_QUICK
     QQmlEngine engine;
@@ -68,6 +73,9 @@ int main(int argc, char** argv)
         qCritical() << component.errors();
         return 3;
     }
+    auto* quickWindow = qobject_cast<QQuickWindow*>(root.get());
+    if (!quickWindow || !quickWindow->flags().testFlag(Qt::FramelessWindowHint))
+        return 5;
     auto* frame = root->findChild<QObject*>(QStringLiteral("frame"));
     if (!frame || frame->property("material").toInt() != 4 || frame->property("effectiveMaterial").toInt() != 0)
         return 4;

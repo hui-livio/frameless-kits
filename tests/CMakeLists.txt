@@ -2,7 +2,16 @@
 function(framelesskit_add_test target source)
     qt_add_executable(${target} ${source})
     set_target_properties(${target} PROPERTIES AUTOMOC ON)
-    target_link_libraries(${target} PRIVATE FramelessKit::Core Qt6::Test)
+    target_link_libraries(${target} PRIVATE Qt6::Test)
+    if(ARGC GREATER 2)
+        target_link_libraries(${target} PRIVATE ${ARGV2})
+    else()
+        # Internal Core tests link the objects directly, not a standalone library.
+        target_link_libraries(${target} PRIVATE FramelessKit::Core)
+        if(FRAMELESSKIT_BUILD_SHARED_LIBS)
+            target_compile_definitions(${target} PRIVATE FRAMELESSKIT_BUILD_CORE)
+        endif()
+    endif()
     target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/src/core")
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
@@ -11,13 +20,11 @@ framelesskit_add_test(framelesskit_core_tests CoreTests.cpp)
 framelesskit_add_test(framelesskit_runtime_tests RuntimeTests.cpp)
 
 if(FRAMELESSKIT_BUILD_WIDGETS)
-    framelesskit_add_test(framelesskit_widgets_tests WidgetsTests.cpp)
-    target_link_libraries(framelesskit_widgets_tests PRIVATE FramelessKit::Widgets)
+    framelesskit_add_test(framelesskit_widgets_tests WidgetsTests.cpp FramelessKit::Widgets)
 endif()
 
 if(FRAMELESSKIT_BUILD_QUICK)
-    framelesskit_add_test(framelesskit_quick_tests QuickTests.cpp)
-    target_link_libraries(framelesskit_quick_tests PRIVATE FramelessKit::Quick)
+    framelesskit_add_test(framelesskit_quick_tests QuickTests.cpp FramelessKit::Quick)
 endif()
 
 if(FRAMELESSKIT_BUILD_EXAMPLES AND FRAMELESSKIT_BUILD_WIDGETS)
@@ -76,8 +83,8 @@ foreach(mode default static core widgets quick)
 endforeach()
 
 if(WIN32 AND FRAMELESSKIT_BUILD_WIDGETS)
-    framelesskit_add_test(framelesskit_widgets_native_tests WidgetsNativeTests.cpp)
-    target_link_libraries(framelesskit_widgets_native_tests PRIVATE FramelessKit::Widgets user32)
+    framelesskit_add_test(framelesskit_widgets_native_tests WidgetsNativeTests.cpp FramelessKit::Widgets)
+    target_link_libraries(framelesskit_widgets_native_tests PRIVATE user32)
     set_tests_properties(framelesskit_widgets_native_tests PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
@@ -87,8 +94,8 @@ if(WIN32 AND FRAMELESSKIT_BUILD_WIDGETS)
 endif()
 
 if(WIN32 AND FRAMELESSKIT_BUILD_QUICK)
-    framelesskit_add_test(framelesskit_quick_native_tests QuickNativeTests.cpp)
-    target_link_libraries(framelesskit_quick_native_tests PRIVATE FramelessKit::Quick user32)
+    framelesskit_add_test(framelesskit_quick_native_tests QuickNativeTests.cpp FramelessKit::Quick)
+    target_link_libraries(framelesskit_quick_native_tests PRIVATE user32)
     set_tests_properties(framelesskit_quick_native_tests PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"

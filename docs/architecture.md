@@ -14,11 +14,11 @@ example/                两个已接通的架构演示
 tests/                  逻辑与生命周期测试、独立安装消费工程
 ```
 
-`FramelessKit::Widgets` → `FramelessKit::Core`、`Qt6::Widgets`；`FramelessKit::Quick` → `FramelessKit::Core`、`Qt6::Qml`、`Qt6::Quick`。Core 只依赖 Qt Core/Gui。按组件导出 CMake targets，Widgets-only 消费不会额外查找或链接 Quick。
+`fk_core` 是内部 OBJECT 目标，只依赖 Qt Core/Gui；对象文件分别嵌入 `FramelessKit::Widgets` 和 `FramelessKit::Quick`，不生成 Core 库，也不安装/导出 `FramelessKit::Core`。库文件名分别为 `framelesswidget`、`framelessquick`。Widgets 另依赖 `Qt6::Widgets`，Quick 另依赖 `Qt6::Qml`、`Qt6::Quick`；Widgets-only 消费不会额外查找或链接 Quick。QML 模块直接链接 Quick 库，不再生成独立插件，静态版由初始化适配保留生成的类型注册代码。公共初始化标志保存在 application 上，确保两套动态库混用时读取同一份初始化状态。
 
 ## 导出与链接配置
 
-各库统一包含源码中的 `FramelessKit/Export.h`，不再生成 `CoreExport.h` / `WidgetsExport.h` / `QuickExport.h`。默认动态库：无宏时导入；构建某个 DLL 时，仅向该 target 私有传递对应的 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_WIDGETS` 或 `FRAMELESSKIT_BUILD_QUICK`。静态库及直接源码集成使用 `FRAMELESSKIT_STATIC` 关闭导入/导出修饰。CMake 只负责传递编译宏和安装源码头文件。
+各库统一包含源码中的 `FramelessKit/Export.h`，不再生成 `CoreExport.h` / `WidgetsExport.h` / `QuickExport.h`。默认动态库：无宏时导入；Core 对象及两个前端 DLL 私有定义 `FRAMELESSKIT_BUILD_CORE`，前端还分别私有定义 `FRAMELESSKIT_BUILD_WIDGETS` 或 `FRAMELESSKIT_BUILD_QUICK`，由各自 DLL 导出所嵌入的 Core 符号。静态库及直接源码集成使用 `FRAMELESSKIT_STATIC` 关闭导入/导出修饰。CMake 只负责传递编译宏和安装源码头文件。
 
 ## 内部责任
 

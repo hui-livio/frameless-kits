@@ -9,9 +9,6 @@ endif()
 if(FRAMELESSKIT_BUILD_QUICK)
     qt_add_executable(framelesskit_quick_demo QuickMain.cpp DemoOptions.h)
     target_link_libraries(framelesskit_quick_demo PRIVATE FramelessKit::Quick)
-    if(NOT FRAMELESSKIT_BUILD_SHARED_LIBS)
-        target_link_libraries(framelesskit_quick_demo PRIVATE FramelessKit::QuickPlugin)
-    endif()
     target_compile_definitions(framelesskit_quick_demo PRIVATE
         FRAMELESSKIT_DEMO_IMPORT_PATH="${QT_QML_OUTPUT_DIRECTORY}"
     )

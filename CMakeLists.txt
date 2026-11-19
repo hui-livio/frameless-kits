@@ -113,8 +113,6 @@ if(FRAMELESSKIT_INSTALL)
         COMPATIBILITY SameMinorVersion
     )
 
-    install(EXPORT FramelessKitCoreTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
-
     if(FRAMELESSKIT_BUILD_WIDGETS)
         install(EXPORT FramelessKitWidgetsTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
     endif()

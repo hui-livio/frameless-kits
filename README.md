@@ -14,7 +14,7 @@
 
 ## 构建（不使用 Presets）
 
-要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。默认构建动态库（`FRAMELESSKIT_BUILD_SHARED_LIBS=ON`），静态/动态使用独立构建和安装目录。
+要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。默认构建动态库（`FRAMELESSKIT_BUILD_SHARED_LIBS=ON`），静态/动态使用独立构建和安装目录。Core 仅作为内部 OBJECT 目标编译，不生成或安装独立库；库产物只有 `framelesswidget` 和 `framelessquick`，对应 CMake 接入目标仍为 `FramelessKit::Widgets` 和 `FramelessKit::Quick`。
 
 ```powershell
 cmake -S . -B build/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64 -DBUILD_SHARED_LIBS=OFF
@@ -34,7 +34,7 @@ cmake --build build/vs-static --config Debug --parallel 8
 cmake --install build/vs-static --config Debug --prefix install/vs-static
 ```
 
-当前建议每个构建/安装目录只发布一种配置；多配置生成器的 QML 插件与 `qmldir` 并列输出，切换 Debug/Release 会覆盖该目录下的插件。需要并存时请再使用不同的目录。
+当前建议每个构建/安装目录只发布一种配置；QML 模块直接链接 Quick 库，不再生成独立插件。静态/动态或 Debug/Release 需要并存时请使用不同的目录。
 
 测试默认关闭，常规构建只生成库和 example。需要现有测试时，显式设置 `-DFRAMELESSKIT_BUILD_TESTING=ON` 后再执行 `ctest --test-dir <构建目录> --output-on-failure`（多配置生成器需加 `-C Debug` 等配置参数）。已有构建目录若缓存了 `ON`，请重新配置为 `-DFRAMELESSKIT_BUILD_TESTING=OFF -DBUILD_TESTING=OFF`。
 
@@ -44,15 +44,15 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 | --- | --- | --- | --- |
 | `FRAMELESSKIT_BUILD_SHARED_LIBS` | `ON`¹ | `ON`¹ | 静态库 / 动态库 |
 | `FRAMELESSKIT_BUILD_WIDGETS` | `ON` | `ON` | Widgets 适配器 |
-| `FRAMELESSKIT_BUILD_QUICK` | `ON` | `ON` | Quick 适配器、QML 模块和插件 |
+| `FRAMELESSKIT_BUILD_QUICK` | `ON` | `ON` | Quick 适配器和 QML 模块 |
 | `FRAMELESSKIT_BUILD_EXAMPLES` | `ON` | `OFF` | 示例应用 |
 | `FRAMELESSKIT_BUILD_TESTING` | `OFF` | `OFF` | 现有测试与 Qt Test 依赖 |
-| `FRAMELESSKIT_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 插件和 CMake 包的安装规则 |
+| `FRAMELESSKIT_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 元数据和 CMake 包的安装规则 |
 | `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows Blur 兼容路径；可关闭以禁用私有 Accent API，不影响系统 Acrylic / Mica / MicaAlt |
 
 ¹ 如果父工程或命令行已经设置标准 `BUILD_SHARED_LIBS`，首次配置时以它作为默认值；显式设置 `FRAMELESSKIT_BUILD_SHARED_LIBS` 可独立选择本库类型，不修改父工程的选择。
 
-纯 Widgets：追加 `-DFRAMELESSKIT_BUILD_QUICK=OFF`。纯 Quick：追加 `-DFRAMELESSKIT_BUILD_WIDGETS=OFF`。只要 Core：同时关闭两个前端；关闭测试可避免 Qt Test 依赖。Qt Quick Controls 只由 QML 演示使用，不是库的 C++ 链接依赖。
+纯 Widgets：追加 `-DFRAMELESSKIT_BUILD_QUICK=OFF`。纯 Quick：追加 `-DFRAMELESSKIT_BUILD_WIDGETS=OFF`。Core 为内部对象目标，不再单独交付；同时关闭两个前端时不会生成库产物。关闭测试可避免 Qt Test 依赖。Qt Quick Controls 只由 QML 演示使用，不是库的 C++ 链接依赖。
 
 兼容旧命令行：独立构建首次配置时，旧的 `BUILD_WIDGETS`、`BUILD_QUICK`、`BUILD_EXAMPLES`、`BUILD_TESTING`、`ENABLE_LEGACY_ACCENT` 可以提供对应新开关的默认值。新开关一旦设置或写入缓存，后续请修改 `FRAMELESSKIT_*`；作为子项目时忽略这些旧名称，避免与父工程冲突。FramelessKit 不定义全局 `BUILD_SHARED_LIBS` 选项。
 
@@ -79,7 +79,7 @@ target_link_libraries(my_app PRIVATE FramelessKit::Widgets)
 
 `add_subdirectory()` 也可使用仓库的绝对路径并提供二进制目录；通过 `FetchContent_MakeAvailable()` 引入时采用同样的子项目默认值。父工程若要启用本库安装，需在接入前显式设置 `FRAMELESSKIT_INSTALL ON`；需要现有测试时设置 `FRAMELESSKIT_BUILD_TESTING ON`，并在父工程根目录 `include(CTest)` / `enable_testing()` 以便根目录 CTest 发现测试。
 
-Quick 接入将组件改为 Qt `Qml Quick`，链接 `FramelessKit::Quick`；静态版还需要链接 `FramelessKit::QuickPlugin` 并在 C++ 中保留 `Q_IMPORT_QML_PLUGIN(FramelessKitPlugin)`，与下方安装消费方式一致。构建树中的 QML 导入根目录可从目标读取，不依赖子项目的局部变量：
+Quick 接入将组件改为 Qt `Qml Quick`，链接 `FramelessKit::Quick` 即可；静态版同样不需要独立插件或 `Q_IMPORT_QML_PLUGIN`，与下方安装消费方式一致。构建树中的 QML 导入根目录可从目标读取，不依赖子项目的局部变量：
 
 ```cmake
 get_target_property(fk_qml_module_dir FramelessKit::Quick QT_QML_MODULE_OUTPUT_DIRECTORY)
@@ -110,9 +110,9 @@ endif()
 | 编译方式 | 需要传递的宏 |
 | --- | --- |
 | 使用动态库（默认） | 无；默认将各模块符号标记为导入 |
-| 构建 Core 动态库 | 仅在 Core 编译单元中定义 `FRAMELESSKIT_BUILD_CORE` |
-| 构建 Widgets 动态库 | 仅在 Widgets 编译单元中定义 `FRAMELESSKIT_BUILD_WIDGETS` |
-| 构建 Quick 动态库 | 仅在 Quick 编译单元中定义 `FRAMELESSKIT_BUILD_QUICK` |
+| 构建供动态库嵌入的 Core 对象 | 在 Core 编译单元中定义 `FRAMELESSKIT_BUILD_CORE` |
+| 构建 Widgets 动态库 | 在 Widgets 编译单元中定义 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_WIDGETS` |
+| 构建 Quick 动态库 | 在 Quick 编译单元中定义 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_QUICK` |
 | 构建/使用静态库，或将源码直接编入应用 | 为相关编译单元统一定义 `FRAMELESSKIT_STATIC`，关闭所有导入/导出修饰 |
 
 三个模块仍各用 `FRAMELESSKIT_CORE_EXPORT`、`FRAMELESSKIT_WIDGETS_EXPORT`、`FRAMELESSKIT_QUICK_EXPORT` 标注接口，但定义集中于同一个头文件。不要向动态库消费者传播 `FRAMELESSKIT_BUILD_*`，也不要在编译某一个 DLL 时同时定义三个构建宏。
@@ -124,7 +124,7 @@ endif()
 target_compile_definitions(my_app PRIVATE FRAMELESSKIT_STATIC)
 ```
 
-这些宏只决定符号可见性；直接集成源码仍需正常配置 Qt AUTOMOC、QML 注册/插件与 Quick 初始化接入。
+这些宏只决定符号可见性；直接集成源码仍需正常配置 Qt AUTOMOC、QML 类型注册与 Quick 初始化接入。
 ## 安装后使用
 
 通过 `CMAKE_PREFIX_PATH` 或 `FramelessKit_DIR` 指向安装目录。仅公开头文件会安装；`src/` 中的 Controller、HostAdapter 等内部头文件不会安装。
@@ -152,24 +152,13 @@ Quick / QML：
 find_package(FramelessKit 0.1 CONFIG REQUIRED COMPONENTS Quick)
 add_executable(my_qml_app main.cpp)
 target_link_libraries(my_qml_app PRIVATE FramelessKit::Quick)
-get_target_property(quick_type FramelessKit::Quick TYPE)
-if(quick_type STREQUAL "STATIC_LIBRARY")
-    target_link_libraries(my_qml_app PRIVATE FramelessKit::QuickPlugin)
-endif()
 ```
 
-`main.cpp` 中在创建 engine / 窗口前调用 `FramelessKit::initialize(true)`。静态包需保留插件入口：
+`main.cpp` 中在创建 engine / 窗口前调用 `FramelessKit::initialize(true)`；静态/动态包均不需要单独导入插件。
 
-```cpp
-#include <QtQml/QQmlExtensionPlugin>
-#ifdef FRAMELESSKIT_STATIC
-Q_IMPORT_QML_PLUGIN(FramelessKitPlugin)
-#endif
-```
+构建 target 自动接入 Quick 初始化适配，不需要应用手工注册回调；纯 Widgets 的二进制不链接 QtQuick。QML 使用 `import FramelessKit`、`WindowAgent` 及 `WindowAgent.Solid` 等枚举。安装后的 QML 搜索根目录由 `FramelessKit_QML_IMPORT_PATH` 给出，加载 engine 时使用 `addImportPath`，或按应用部署方式设置导入路径。
 
-构建 target 自动接入 Quick 初始化适配，不需要应用手工注册回调；纯 Widgets / Core 的二进制不链接 QtQuick。QML 使用 `import FramelessKit`、`WindowAgent` 及 `WindowAgent.Solid` 等枚举。安装后的 QML 搜索根目录由 `FramelessKit_QML_IMPORT_PATH` 给出，加载 engine 时使用 `addImportPath`，或按应用部署方式设置导入路径。
-
-动态包还需要部署 `bin` 中的库、`lib/qml/FramelessKit` 中的插件/元数据以及匹配的 Qt 运行库。模块静态不等于 Qt 静态。本工程不承诺运行中热卸载或同时加载不同静态/动态版本。
+动态包还需要部署 `bin` 中的库、`lib/qml/FramelessKit` 中的 QML 元数据以及匹配的 Qt 运行库。模块静态不等于 Qt 静态。本工程不承诺运行中热卸载或同时加载不同静态/动态版本。
 
 ## 示例与测试
 

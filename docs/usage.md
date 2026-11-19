@@ -48,7 +48,7 @@ Widgets 与 QML 混用时，构造 QApplication，然后调用 initialize(true)�
 
 Qt 6.8 官方 QQuickWindow 文档要求：预期创建透明窗口时，在首个 QQuickWindow 创建前开启默认 Alpha 缓冲。该前置操作由 initialize(true) 统一封装；窗口内的 Agent 仍只管理单窗口的背景、材质和交互。
 
-QML 类型注册仍走标准模块构建。动态插件加载和静态插件导入由交付配置负责；统一初始化不能补救漏链接的静态插件或缺失的模块文件。
+QML 类型注册仍走标准模块构建，注册代码直接包含在 Quick 库中，不生成独立插件。静态/动态构建均只需链接 FramelessKit::Quick，并在创建 engine / 窗口前调用 initialize(true)，无需 Q_IMPORT_QML_PLUGIN；部署时仍需保留模块元数据。
 
 ## 常用接入
 
