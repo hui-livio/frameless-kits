@@ -9,7 +9,7 @@ struct wl_display;
 struct wl_seat;
 struct wl_proxy;
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // A true result means the request was submitted, not that the compositor made
 // the menu visible. On failure, error describes the detected problem.
@@ -24,4 +24,4 @@ struct WaylandMenuInput
 WaylandMenuInput captureWaylandMenuInput(QWindow* window);
 bool showWaylandSystemMenu(QWindow* window, QPointF localPosition, bool hasInputEvent, const WaylandMenuInput& input,
                            QString& error);
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

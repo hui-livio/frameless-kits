@@ -1,13 +1,13 @@
 // Linked directly into Quick consumers so static archive elimination cannot discard
 // initialize(true)'s adapter. Core remains completely independent of QtQuick.
-#include <FramelessKit/Export.h>
+#include <WindowHeler/Export.h>
 #include <QString>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 using QuickInitializer = bool (*)(QString& error);
-FRAMELESSKIT_CORE_EXPORT void registerQuickInitializer(QuickInitializer);
-FRAMELESSKIT_QUICK_EXPORT bool prepareQuick(QString& error);
+WINDOWHELER_CORE_EXPORT void registerQuickInitializer(QuickInitializer);
+WINDOWHELER_QUICK_EXPORT bool prepareQuick(QString& error);
 namespace
 {
 struct QuickBootstrap
@@ -19,4 +19,4 @@ struct QuickBootstrap
 };
 const QuickBootstrap bootstrap;
 } // namespace
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

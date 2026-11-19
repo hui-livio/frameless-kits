@@ -1,10 +1,10 @@
 #pragma once
-#include <FramelessKit/Material.h>
+#include <WindowHeler/Material.h>
 #include <QColor>
 #include <QString>
 #include <qt_windows.h>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // All undocumented Accent declarations are confined to WindowsMaterial.cpp.
 class WindowsMaterial
@@ -44,4 +44,4 @@ private:
     BOOL m_originalDark    = FALSE;
     BOOL m_lastDark        = FALSE;
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

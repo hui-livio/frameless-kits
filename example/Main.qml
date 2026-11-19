@@ -3,12 +3,13 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import FramelessKit
+import WindowHeler.Frameless
+import WindowHeler.Material
 
 Window {
     id: root
 
-    property int initialMaterial: WindowAgent.Solid
+    property int initialMaterial: MaterialAgent.Solid
 
     width: 960
     height: 600
@@ -17,7 +18,7 @@ Window {
     visible: true
     title: qsTr("无边框模块接口演示")
 
-    WindowAgent {
+    FramelessAgent {
         id: frame
         objectName: "frame"
 
@@ -25,6 +26,16 @@ Window {
         titleBar: titleBarItem
         interactiveItems: [titleControls]
         maximizeButton: maximizeButtonItem
+
+        onErrorOccurred: function (message) {
+            feedback.text = message;
+        }
+    }
+
+    MaterialAgent {
+        id: material
+        objectName: "material"
+        window: root
         material: root.initialMaterial
 
         onErrorOccurred: function (message) {
@@ -118,32 +129,32 @@ Window {
                 model: [
                     {
                         text: qsTr("纯色"),
-                        value: WindowAgent.Solid
+                        value: MaterialAgent.Solid
                     },
                     {
                         text: qsTr("透明"),
-                        value: WindowAgent.Transparent
+                        value: MaterialAgent.Transparent
                     },
                     {
                         text: qsTr("背景模糊"),
-                        value: WindowAgent.Blur
+                        value: MaterialAgent.Blur
                     },
                     {
                         text: qsTr("亚克力"),
-                        value: WindowAgent.Acrylic
+                        value: MaterialAgent.Acrylic
                     },
                     {
                         text: qsTr("云母"),
-                        value: WindowAgent.Mica
+                        value: MaterialAgent.Mica
                     },
                     {
                         text: qsTr("云母 Alt"),
-                        value: WindowAgent.MicaAlt
+                        value: MaterialAgent.MicaAlt
                     }
                 ]
                 onActivated: {
                     feedback.text = qsTr("已请求：%1").arg(materials.currentText);
-                    frame.material = materials.currentValue;
+                    material.material = materials.currentValue;
                 }
             }
 
@@ -154,7 +165,7 @@ Window {
 
         Label {
             Layout.fillWidth: true
-            text: qsTr("请求：%1；实际配置：%2").arg(materials.model[frame.material].text).arg(materials.model[frame.effectiveMaterial].text)
+            text: qsTr("请求：%1；实际配置：%2").arg(materials.model[material.material].text).arg(materials.model[material.effectiveMaterial].text)
         }
 
         Label {

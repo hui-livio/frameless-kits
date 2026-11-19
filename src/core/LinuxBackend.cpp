@@ -8,7 +8,7 @@
 #include <QMouseEvent>
 #include <QPointer>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -32,7 +32,7 @@ protected:
         else
             m_menuInput = nullptr;
         m_waylandInput = {};
-#if FRAMELESSKIT_HAS_WAYLAND
+#if WINDOWHELER_HAS_WAYLAND
         if (m_menuInput && m_menuInput->spontaneous() &&
             QGuiApplication::platformName().startsWith(QStringLiteral("wayland")))
             m_waylandInput = captureWaylandMenuInput(m_host.window());
@@ -66,7 +66,7 @@ protected:
 
     void showSystemMenu(QPointF position) override
     {
-#if !FRAMELESSKIT_HAS_X11 && !FRAMELESSKIT_HAS_WAYLAND
+#if !WINDOWHELER_HAS_X11 && !WINDOWHELER_HAS_WAYLAND
         Q_UNUSED(position);
 #endif
         QWindow* window = m_host.window();
@@ -77,22 +77,22 @@ protected:
         bool submitted = false;
         if (platform == QStringLiteral("xcb"))
         {
-#if FRAMELESSKIT_HAS_X11
+#if WINDOWHELER_HAS_X11
             const bool keyboard = m_menuInput && m_menuInput->type() == QEvent::KeyPress;
             submitted = showX11SystemMenu(window, position, m_menuInput ? quint32(m_menuInput->timestamp()) : 0,
                                           keyboard, error);
 #else
-            error = QStringLiteral("X11 system menu support was not built; enable FRAMELESSKIT_ENABLE_X11 "
+            error = QStringLiteral("X11 system menu support was not built; enable WINDOWHELER_ENABLE_X11 "
                                    "with Qt's X11 native interface and XCB headers.");
 #endif
         }
         else if (platform.startsWith(QStringLiteral("wayland")))
         {
-#if FRAMELESSKIT_HAS_WAYLAND
+#if WINDOWHELER_HAS_WAYLAND
             submitted = showWaylandSystemMenu(window, position, m_menuInput && m_menuInput->spontaneous(),
                                               m_waylandInput, error);
 #else
-            error = QStringLiteral("Wayland system menu support was not built; enable FRAMELESSKIT_ENABLE_WAYLAND "
+            error = QStringLiteral("Wayland system menu support was not built; enable WINDOWHELER_ENABLE_WAYLAND "
                                    "with matching Qt GuiPrivate and Wayland client headers.");
 #endif
         }
@@ -116,4 +116,4 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     backend->start();
     return backend;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

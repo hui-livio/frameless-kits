@@ -7,7 +7,7 @@
 #include <QString>
 #include <QWindow>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // Implemented by UI adapters; Core never includes Widgets or Quick headers.
 class HostAdapter
@@ -81,4 +81,4 @@ public:
     virtual void buttonEvent(QObject*, QEvent::Type, QPointF, Qt::MouseButton, Qt::MouseButtons) {}
     virtual void cancelButton(QObject*) {}
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

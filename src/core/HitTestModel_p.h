@@ -5,7 +5,7 @@
 #include <QPointer>
 #include <QVariant>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 enum class HitRegion
 {
@@ -107,4 +107,4 @@ private:
     QPointer<QObject> m_owner;
     bool m_hasOwner = false;
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

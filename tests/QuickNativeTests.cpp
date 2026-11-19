@@ -1,7 +1,7 @@
 #include "WindowsTestSupport.h"
 
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WindowAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/FramelessAgent.h>
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -40,7 +40,7 @@ private slots:
         auto* button          = window->findChild<QQuickItem*>("maximize");
         auto* interactive     = window->findChild<QQuickItem*>("interactive");
         const bool hadSurface = window->handle() != nullptr;
-        FramelessKit::WindowAgent agent;
+        WindowHeler::FramelessAgent agent;
         agent.setWindow(window);
         agent.setTitleBar(bar);
         agent.setMaximizeButton(button);
@@ -81,7 +81,7 @@ private slots:
         QCOMPARE(clicked.count(), 1);
         agent.setMaximizeButton(button);
         QQuickItem unsupported(window->contentItem());
-        QSignalSpy errors(&agent, &FramelessKit::WindowAgent::errorOccurred);
+        QSignalSpy errors(&agent, &WindowHeler::FramelessAgent::errorOccurred);
         agent.setMaximizeButton(&unsupported);
         QCOMPARE(errors.count(), 1);
         QCOMPARE(agent.maximizeButton(), button);
@@ -103,7 +103,7 @@ private slots:
 int main(int argc, char** argv)
 {
     QGuiApplication app(argc, argv);
-    FramelessKit::initialize(true);
+    WindowHeler::initialize(true);
     QuickNativeTests tests;
     return QTest::qExec(&tests, argc, argv);
 }

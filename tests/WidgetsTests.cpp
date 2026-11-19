@@ -1,5 +1,5 @@
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WidgetAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/FramelessWidgetAgent.h>
 #include <QApplication>
 #include <QPushButton>
 #include <QWidget>
@@ -11,9 +11,9 @@ class WidgetsTests final : public QObject
 private slots:
     void configurationDoesNotCreateSurface()
     {
-        using namespace FramelessKit;
+        using namespace WindowHeler;
         QWidget window;
-        WidgetAgent agent(&window);
+        FramelessWidgetAgent agent(&window);
         QWidget bar(&window);
         QPushButton button(&bar);
         agent.setTitleBar(&bar);
@@ -23,12 +23,12 @@ private slots:
         QCOMPARE(agent.titleBar(), &bar);
         QCOMPARE(agent.maximizeButton(), &button);
         QVERIFY(!window.testAttribute(Qt::WA_WState_Created));
-        QSignalSpy errors(&agent, &WidgetAgent::errorOccurred);
+        QSignalSpy errors(&agent, &FramelessWidgetAgent::errorOccurred);
         QWidget other;
         agent.setTitleBar(&other);
         QCOMPARE(agent.titleBar(), &bar);
         QCOMPARE(errors.count(), 1);
-        QSignalSpy changes(&agent, &WidgetAgent::materialChanged);
+        QSignalSpy changes(&agent, &FramelessWidgetAgent::materialChanged);
         agent.setMaterial(Material::Mica);
         QCOMPARE(agent.material(), Material::Mica);
         QCOMPARE(agent.effectiveMaterial(), Material::Solid);
@@ -41,12 +41,12 @@ private slots:
     }
     void duplicateAndOwnership()
     {
-        using namespace FramelessKit;
+        using namespace WindowHeler;
         auto* window = new QWidget;
-        auto* first  = new WidgetAgent(window);
-        QPointer<WidgetAgent> guard(first);
-        auto* second = new WidgetAgent(window);
-        QSignalSpy errors(second, &WidgetAgent::errorOccurred);
+        auto* first  = new FramelessWidgetAgent(window);
+        QPointer<FramelessWidgetAgent> guard(first);
+        auto* second = new FramelessWidgetAgent(window);
+        QSignalSpy errors(second, &FramelessWidgetAgent::errorOccurred);
         QTRY_COMPARE(errors.count(), 1);
         delete second;
         auto* title = new QWidget(window);
@@ -60,7 +60,7 @@ private slots:
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
-    FramelessKit::initialize();
+    WindowHeler::initialize();
     WidgetsTests tests;
     return QTest::qExec(&tests, argc, argv);
 }

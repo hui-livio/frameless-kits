@@ -1,6 +1,6 @@
-#include <FramelessKit/Initialization.h>
+#include <WindowHeler/Initialization.h>
 #ifdef CONSUMER_WIDGETS
-#include <FramelessKit/WidgetAgent.h>
+#include <WindowHeler/FramelessWidgetAgent.h>
 #include <QApplication>
 #include <QWidget>
 #else
@@ -22,15 +22,15 @@ int main(int argc, char** argv)
     QGuiApplication app(argc, argv);
 #endif
 #ifdef CONSUMER_QUICK
-    FramelessKit::initialize(true);
+    WindowHeler::initialize(true);
     if (!QQuickWindow::hasDefaultAlphaBuffer())
         return 1;
 #else
-    FramelessKit::initialize();
+    WindowHeler::initialize();
 #endif
 #ifdef CONSUMER_WIDGETS
     QWidget window;
-    FramelessKit::WidgetAgent agent(&window);
+    WindowHeler::FramelessWidgetAgent agent(&window);
     QWidget titleBar(&window);
     agent.setTitleBar(&titleBar);
     if (agent.titleBar() != &titleBar || !window.windowFlags().testFlag(Qt::FramelessWindowHint))
@@ -38,9 +38,9 @@ int main(int argc, char** argv)
     // A failed initialization check leaves the controller unbound. Exercise an
     // operation that requires a bound controller, including in the mixed DLL case.
     bool widgetError = false;
-    QObject::connect(&agent, &FramelessKit::WidgetAgent::errorOccurred, &app,
+    QObject::connect(&agent, &WindowHeler::FramelessWidgetAgent::errorOccurred, &app,
                      [&](const QString&) { widgetError = true; });
-    agent.setMaterial(FramelessKit::Material::Transparent);
+    agent.setMaterial(WindowHeler::Material::Transparent);
     QCoreApplication::processEvents();
     if (widgetError)
         return 5;
@@ -51,15 +51,15 @@ int main(int argc, char** argv)
     QQmlComponent component(&engine);
     component.setData(R"(
         import QtQuick
-        import FramelessKit
+        import WindowHeler
         Window {
             id: root
             width: 320; height: 240
-            WindowAgent {
+            FramelessAgent {
                 objectName: "frame"
                 window: root
                 titleBar: bar
-                material: WindowAgent.Mica
+                material: FramelessAgent.Mica
                 interactiveItems: [buttonArea]
             }
             Item { id: bar; width: 320; height: 40 }

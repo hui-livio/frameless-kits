@@ -8,7 +8,7 @@
 #include <QWidget>
 #include <utility>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // Included by WidgetAgent only on macOS; all operations use public Qt APIs.
 class CocoaWidgetSafeArea final : public QObject
@@ -226,4 +226,4 @@ private:
     bool m_synchronizing = false;
     bool m_resynchronize = false;
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

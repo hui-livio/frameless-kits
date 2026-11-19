@@ -92,7 +92,7 @@ Class installNativeClass(id object, bool isView)
             return entry.installed;
         }
     }
-    const QByteArray name = QByteArray("FramelessKit_") + class_getName(base);
+    const QByteArray name = QByteArray("WindowHeler_") + class_getName(base);
     Class type            = objc_allocateClassPair(base, name.constData(), 0);
     if (!type)
         return Nil;
@@ -158,7 +158,7 @@ void removeNativeClass(id object, Class installed)
 }
 @end
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -499,4 +499,4 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     backend->start();
     return backend;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

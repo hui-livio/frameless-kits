@@ -5,7 +5,7 @@
 ## 分层
 
 ```text
-include/FramelessKit/    公开初始化、Material、WidgetAgent、WindowAgent
+include/WindowHeler/    Runtime、初始化、Material、FramelessFramelessWidgetAgent / MaterialWidgetAgent、MaterialFramelessWidgetAgent / MaterialWidgetAgent、FramelessAgent、MaterialAgent
 src/core/               单一运行时、窗口绑定、命中模型、材质状态、平台工厂
 src/widgets/            QWidget 宿主映射与 Agent PIMPL
 src/quick/              QQuickItem 映射、QML 声明收集、Quick 初始化适配与链接引导
@@ -14,11 +14,11 @@ example/                两个已接通的架构演示
 tests/                  逻辑与生命周期测试、独立安装消费工程
 ```
 
-`fk_core` 是内部 OBJECT 目标，只依赖 Qt Core/Gui；对象文件分别嵌入 `FramelessKit::Widgets` 和 `FramelessKit::Quick`，不生成 Core 库，也不安装/导出 `FramelessKit::Core`。库文件名分别为 `framelesswidget`、`framelessquick`。Widgets 另依赖 `Qt6::Widgets`，Quick 另依赖 `Qt6::Qml`、`Qt6::Quick`；Widgets-only 消费不会额外查找或链接 Quick。QML 模块直接链接 Quick 库，不再生成独立插件，静态版由初始化适配保留生成的类型注册代码。公共初始化标志保存在 application 上，确保两套动态库混用时读取同一份初始化状态。
+`WindowHeler::Runtime` 是始终 SHARED 的运行时库，持有跨 DLL 的 WindowContext 注册表、句柄和 Runtime ABI。四个前端 target `WindowHeler::FramelessWidgets`、`WindowHeler::FramelessQuick`、`WindowHeler::MaterialWidgets`、`WindowHeler::MaterialQuick` 只依赖 Runtime；前端 target 根据 `WINDOWHELER_BUILD_SHARED_LIBS` 生成 STATIC/SHARED。库文件名为 `windowhelerruntime`、`framelesswidget`、`framelessquick`、`framelessmaterialwidget`、`framelessmaterialquick`。Widgets 与 Quick 保持独立依赖，不提供 `WindowHeler::Widgets` 或 `WindowHeler::Quick` 组合 target。
 
 ## 导出与链接配置
 
-各库统一包含源码中的 `FramelessKit/Export.h`，不再生成 `CoreExport.h` / `WidgetsExport.h` / `QuickExport.h`。默认动态库：无宏时导入；Core 对象及两个前端 DLL 私有定义 `FRAMELESSKIT_BUILD_CORE`，前端还分别私有定义 `FRAMELESSKIT_BUILD_WIDGETS` 或 `FRAMELESSKIT_BUILD_QUICK`，由各自 DLL 导出所嵌入的 Core 符号。静态库及直接源码集成使用 `FRAMELESSKIT_STATIC` 关闭导入/导出修饰。CMake 只负责传递编译宏和安装源码头文件。
+各库统一包含源码中的 `WindowHeler/Export.h`，不再生成 `CoreExport.h` / `WidgetsExport.h` / `QuickExport.h`。默认动态库：Runtime 和各前端 DLL 分别使用对应导出宏；静态库及直接源码集成使用 `WINDOWHELER_STATIC` 关闭导入/导出修饰。前端不再嵌入 Runtime 对象文件，所有跨 DLL 状态只来自 `WindowHeler::Runtime`。
 
 ## 内部责任
 
@@ -31,13 +31,13 @@ tests/                  逻辑与生命周期测试、独立安装消费工程
 
 ## 统一初始化的链接方式
 
-Core 实现唯一 `initialize(bool)`，不引用 QtQuick。Quick 模块将 `src/quick/QuickBootstrap.cpp` 预编译为 OBJECT target，由 Quick target 向消费者传播其目标文件并直接参与链接。该目标文件引用 Quick 的初始化函数并在 main 前登记至 Core。这样静态链接不会裁掉初始化适配，动态库也会在 main 前成为实际依赖；不依赖 QML 插件在加载 engine 后才登记初始化。
+Runtime 实现唯一 `initialize(bool)`，不引用 QtQuick。Quick 模块将 `src/quick/QuickBootstrap.cpp` 直接编译进 `WindowHeler::FramelessQuick`，并在 main 前登记 Quick 初始化适配到 Runtime。这样静态链接不会裁掉初始化适配，动态库也会在 main 前成为实际依赖；不依赖 QML 插件在加载 engine 后才登记初始化。
 
-安装包不附带实现源码；引导目标文件安装到 `${CMAKE_INSTALL_LIBDIR}/FramelessKit/objects`，由导出的 CMake target 自动引用。它不是应用公共 API，也不要求应用手动包含内部头文件或添加链接选项。Quick 全局默认 Alpha buffer 与单窗口的 alpha 预留是渲染前置准备；窗口 Agent 只管理自身的背景和原生材质，不改全局图形后端。
+安装包不附带实现源码；引导目标文件安装到 `${CMAKE_INSTALL_LIBDIR}/WindowHeler/objects`，由导出的 CMake target 自动引用。它不是应用公共 API，也不要求应用手动包含内部头文件或添加链接选项。Quick 全局默认 Alpha buffer 与单窗口的 alpha 预留是渲染前置准备；窗口 Agent 只管理自身的背景和原生材质，不改全局图形后端。
 
 ## 生命周期边界
 
-Widgets Agent 以宿主为 QObject 父对象，PIMPL 拥有 Controller。QML Agent 由 QML 对象树拥有，通过 QQmlParserStatus 在组件完成阶段建立绑定，配置顺序不影响初始请求；window 改变时重建逻辑 Controller。注册 UI 对象只保存 QPointer，不接管所有权。
+Widgets Agent 以宿主为 QObject 父对象，PIMPL 拥有 Controller。FramelessAgent / MaterialAgent 由 QML 对象树拥有，通过 QQmlParserStatus 在组件完成阶段建立绑定，配置顺序不影响初始请求；window 改变时重建逻辑 Controller。注册 UI 对象只保存 QPointer，不接管所有权。
 
 Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用时重建绑定；generation 用于拒绝过期的原生回调。Cocoa 通过 NSView.window 观察器跟踪 NSWindow 变化，对绑定对象安装独立的运行时子类以维持标题栏设置；不替换 Qt 的窗口 delegate，也不修改未绑定窗口的类。解除绑定时移除观察器、清理关联状态并恢复模块管理的原生属性。模块仍按进程生命周期加载，不支持任意热卸载。材质请求在新表面/新原生窗口就绪后重放；主题、调色板和系统透明策略变化触发重新配置。Quick 对已确认的 alpha 状态按表面生命周期失效，避免把旧表面的能力误用于新表面。
 
@@ -91,7 +91,7 @@ Windows 与 Cocoa 后端监听 surface 生命周期，并在原生窗口可用�
 - 按用户明确要求，Windows 10 的 Acrylic 与 Mica / MicaAlt 一样回退默认 Solid，恢复宿主背景，不使用旧 Accent Acrylic。不强制覆盖应用原有背景颜色。
 - Acrylic / Mica / MicaAlt 统一要求 build 22621+；系统能力不足时，保留材质请求、报告版本要求，effectiveMaterial 为 Solid。后续切回 Blur / Transparent 正常应用。
 - 现代 Acrylic 保留 `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`、左侧 frame 扩展和 Quick 首次表面刷新。这是 qwindowkit 的实际 Acrylic 调用路径；视觉效果仍待 Win11 对应系统验收。
-- 删除旧 Accent Acrylic 的状态 4、tint / alpha 与兼容版本分支；既有 `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` 仅控制 Blur。
+- 删除旧 Accent Acrylic 的状态 4、tint / alpha 与兼容版本分支；既有 `WINDOWHELER_ENABLE_LEGACY_ACCENT` 仅控制 Blur。
 - 原生 Blur 不提供半径 / sigma / 迭代次数配置；系统 Acrylic 也不承诺可调半径。可调的应用内部内容模糊应独立于窗口材质功能。
 
 ### 透明 / Blur 原生白边与上游修复对齐（2026-11-18）

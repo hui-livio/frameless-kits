@@ -18,7 +18,7 @@
 #include <windowsx.h>
 // clang-format on
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -735,4 +735,4 @@ std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter& host, const 
     backend->start();
     return backend;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

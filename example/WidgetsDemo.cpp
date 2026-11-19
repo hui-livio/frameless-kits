@@ -1,8 +1,6 @@
 // Frameless window demo with native material selection and diagnostics.
 #include "DemoOptions.h"
 
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WidgetAgent.h>
 #include <QApplication>
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -12,12 +10,15 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <WindowHeler/FramelessWidgetAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/MaterialWidgetAgent.h>
 
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
-    FramelessKit::initialize();
-    using FramelessKit::Material;
+    WindowHeler::initialize();
+    using WindowHeler::Material;
 
     QWidget window;
     window.setWindowTitle(QObject::tr("无边框模块接口演示"));
@@ -112,34 +113,37 @@ int main(int argc, char* argv[])
                      });
     QObject::connect(close, &QToolButton::clicked, &window, &QWidget::close);
 
-    // FramelessKit integration: one agent, four configuration concepts.
-    auto* frame = new FramelessKit::WidgetAgent(&window);
+    // WindowHeler integration: one agent, four configuration concepts.
+    auto* frame    = new WindowHeler::FramelessWidgetAgent(&window);
+    auto* material = new WindowHeler::MaterialWidgetAgent(&window);
 
     // Optional diagnostics; ordinary applications do not have to subscribe.
-    QObject::connect(frame, &FramelessKit::WidgetAgent::errorOccurred, feedback, &QLabel::setText);
+    QObject::connect(frame, &WindowHeler::FramelessWidgetAgent::errorOccurred, feedback, &QLabel::setText);
+    QObject::connect(material, &WindowHeler::MaterialWidgetAgent::errorOccurred, feedback, &QLabel::setText);
 
     frame->setTitleBar(titleBar);
     frame->setInteractive(titleControls);
     frame->setMaximizeButton(maximize);
-    const auto updateMaterialState = [frame, materialState, materials]
+    const auto updateMaterialState = [material, materialState, materials]
     {
         materialState->setText(QObject::tr("请求：%1；实际配置：%2")
-                                   .arg(materials->itemText(int(frame->material())),
-                                        materials->itemText(int(frame->effectiveMaterial()))));
+                                   .arg(materials->itemText(int(material->material())),
+                                        materials->itemText(int(material->effectiveMaterial()))));
     };
-    QObject::connect(frame, &FramelessKit::WidgetAgent::materialChanged, &window, updateMaterialState);
-    QObject::connect(frame, &FramelessKit::WidgetAgent::effectiveMaterialChanged, &window, updateMaterialState);
-    frame->setMaterial(initialMaterial);
+    QObject::connect(material, &WindowHeler::MaterialWidgetAgent::materialChanged, &window, updateMaterialState);
+    QObject::connect(material, &WindowHeler::MaterialWidgetAgent::effectiveMaterialChanged, &window,
+                     updateMaterialState);
+    material->setMaterial(initialMaterial);
     updateMaterialState();
 
     QObject::connect(materials, &QComboBox::activated, &window,
-                     [frame, materials, feedback](int index)
+                     [material, materials, feedback](int index)
                      {
                          feedback->setText(QObject::tr("已请求：%1").arg(materials->itemText(index)));
-                         frame->setMaterial(static_cast<Material>(materials->itemData(index).toInt()));
+                         material->setMaterial(static_cast<Material>(materials->itemData(index).toInt()));
                      });
 
     window.show();
-    runMaterialDemo(frame, app.arguments());
+    runMaterialDemo(material, app.arguments());
     return app.exec();
 }

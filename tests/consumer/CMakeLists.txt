@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(FramelessKitInstalledConsumer LANGUAGES CXX)
+project(WindowHelerInstalledConsumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -13,27 +13,27 @@ elseif(CONSUMER_FRONTEND STREQUAL "Widgets" OR CONSUMER_FRONTEND STREQUAL "Quick
 else()
     message(FATAL_ERROR "Unknown consumer frontend")
 endif()
-find_package(FramelessKit 0.1 CONFIG REQUIRED COMPONENTS ${components})
-if(TARGET FramelessKit::Core OR TARGET FramelessKit::QuickPlugin)
+find_package(WindowHeler 0.1 CONFIG REQUIRED COMPONENTS ${components})
+if(TARGET WindowHeler::Runtime OR TARGET WindowHeler::FramelessQuickPlugin)
     message(FATAL_ERROR "Only Widgets and Quick libraries may be exported")
 endif()
-add_executable(framelesskit_consumer main.cpp)
+add_executable(windowheler_consumer main.cpp)
 foreach(component IN LISTS components)
-    target_link_libraries(framelesskit_consumer PRIVATE FramelessKit::${component})
+    target_link_libraries(windowheler_consumer PRIVATE WindowHeler::${component})
 endforeach()
 if("Widgets" IN_LIST components)
-    target_compile_definitions(framelesskit_consumer PRIVATE CONSUMER_WIDGETS)
+    target_compile_definitions(windowheler_consumer PRIVATE CONSUMER_WIDGETS)
     if(NOT "Quick" IN_LIST components AND TARGET Qt6::Quick)
         message(FATAL_ERROR "Widgets-only consumption must not discover QtQuick")
     endif()
 endif()
 if("Quick" IN_LIST components)
-    target_compile_definitions(framelesskit_consumer PRIVATE
+    target_compile_definitions(windowheler_consumer PRIVATE
         CONSUMER_QUICK
-        CONSUMER_QML_IMPORT_PATH="${FramelessKit_QML_IMPORT_PATH}"
+        CONSUMER_QML_IMPORT_PATH="${WindowHeler_QML_IMPORT_PATH}"
     )
 endif()
 # The runner reads the exact executable location for any generator/configuration.
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/executable-$<CONFIG>.txt"
-    CONTENT "$<TARGET_FILE:framelesskit_consumer>"
+    CONTENT "$<TARGET_FILE:windowheler_consumer>"
 )

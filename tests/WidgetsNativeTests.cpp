@@ -1,6 +1,6 @@
 #include "WindowsTestSupport.h"
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WidgetAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/FramelessWidgetAgent.h>
 #include <QApplication>
 #include <QDialog>
 #include <QPushButton>
@@ -19,7 +19,7 @@ private slots:
         QWidget bar(&window); bar.setGeometry(8, 8, 624, 44);
         QPushButton button(&bar); button.setGeometry(500, 0, 100, 40);
         QWidget interactive(&bar); interactive.setGeometry(200, 0, 100, 40);
-        auto agent = std::make_unique<FramelessKit::WidgetAgent>(&window);
+        auto agent = std::make_unique<WindowHeler::FramelessWidgetAgent>(&window);
         agent->setTitleBar(&bar); agent->setMaximizeButton(&button); agent->setInteractive(&interactive);
         QVERIFY(!window.testAttribute(Qt::WA_WState_Created));
         window.show();
@@ -73,7 +73,7 @@ private slots:
         QWidget window; window.resize(640,420);
         QWidget bar(&window); bar.setGeometry(8,8,624,44);
         QPushButton button(&bar); button.setGeometry(500,0,100,40);
-        FramelessKit::WidgetAgent agent(&window); agent.setTitleBar(&bar); agent.setMaximizeButton(&button);
+        WindowHeler::FramelessWidgetAgent agent(&window); agent.setTitleBar(&bar); agent.setMaximizeButton(&button);
         connect(&button, &QPushButton::clicked, &window, [&] {
             window.isMaximized() ? window.showNormal() : window.showMaximized();
         });
@@ -116,7 +116,7 @@ private slots:
     {
         QWidget window; window.resize(640,420);
         QWidget bar(&window); bar.setGeometry(8,8,624,44);
-        FramelessKit::WidgetAgent agent(&window); agent.setTitleBar(&bar);
+        WindowHeler::FramelessWidgetAgent agent(&window); agent.setTitleBar(&bar);
         window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window)); QCoreApplication::processEvents();
         SetWindowPos(nativeHandle(window.windowHandle()), nullptr, -800, -300,0,0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         QCOMPARE(nativeHit(window.windowHandle(),{30,20}),LRESULT(HTCAPTION));
@@ -129,7 +129,7 @@ private slots:
 };
 int main(int argc,char** argv)
 {
-    QApplication app(argc,argv); FramelessKit::initialize();
+    QApplication app(argc,argv); WindowHeler::initialize();
     WidgetsNativeTests tests; return QTest::qExec(&tests,argc,argv);
 }
 #include "WidgetsNativeTests.moc"

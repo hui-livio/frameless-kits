@@ -10,7 +10,7 @@
 #include <QTimer>
 #include <QWindow>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 PlatformBackend::PlatformBackend(HostAdapter& host, const HitTestModel& hitTest, Diagnostic diagnostic)
     : m_host(host), m_hitTest(hitTest), m_diagnostic(std::move(diagnostic))
@@ -349,4 +349,4 @@ bool PlatformBackend::eventFilter(QObject* object, QEvent* event)
     }
     return false;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

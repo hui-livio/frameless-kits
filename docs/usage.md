@@ -1,10 +1,10 @@
 > 当前实现状态：公共 API、Widgets / QML example、Windows / Cocoa 原生后端与材质适配已接入。平台支持和验证边界请见 [README](../README.md) 与 [架构落地说明](architecture.md)；视觉效果以对应系统的 example 实机验收为准。
 
-# FramelessKit 接口使用 Demo
+# WindowHeler 接口使用 Demo
 
-这是一组用于评审公共接口的调用方代码，基于设计稿 v0.5。目标是 Qt 6.8+、C++20、Widgets/QML，以及静态/动态两种库交付。
+这是一组用于评审公共接口的调用方代码，基于设计稿 v0.8。目标是 Qt 6.8+、C++20、Widgets/QML，以及静态/动态两种库交付。
 
-Initialization.h、WidgetAgent.h、QML WindowAgent、Material 枚举和相关信号已实现。示例可直接构建运行；不支持的原生材质明确降级，不用模拟效果冒充系统效果。
+Initialization.h、FramelessWidgetAgent.h、MaterialWidgetAgent.h、FramelessAgent、MaterialAgent 和 Material 枚举已实现。示例可直接构建运行；不支持的原生材质明确降级，不用模拟效果冒充系统效果。
 
 ## 文件
 
@@ -12,14 +12,14 @@ Initialization.h、WidgetAgent.h、QML WindowAgent、Material 枚举和相关信
 - `Main.qml`：同一界面的 QML 版本，使用标准 Qt Quick Controls 按钮。
 - `QuickMain.cpp`：QML 应用启动入口，在加载 QML 前调用统一初始化。
 
-两种 UI 都是示例；真正要评审的是下方的 Agent 接入部分。QuickMain.cpp 通过 qt_add_qml_module 将 Main.qml 打包到 URI 为 FramelessDemo 的应用模块中，Main.qml 再导入 FramelessKit 库模块。
+两种 UI 都是示例；真正要评审的是下方的 Agent 接入部分。QuickMain.cpp 通过 qt_add_qml_module 将 Main.qml 打包到 URI 为 FramelessDemo 的应用模块中，Main.qml 再导入 WindowHeler 库模块。
 
 ## main 初始化约定
 
 统一公共入口声明为：
 
 ```cpp
-namespace FramelessKit {
+namespace WindowHeler {
     void initialize(bool useQML = false);
 }
 ```
@@ -28,15 +28,15 @@ Widgets：
 
 ```cpp
 QApplication app(argc, argv);
-FramelessKit::initialize(); // 等价于 initialize(false)
-// 接着创建窗口和 WidgetAgent。
+WindowHeler::initialize(); // 等价于 initialize(false)
+// 接着创建窗口和功能 Agent。
 ```
 
 QML：
 
 ```cpp
 QGuiApplication app(argc, argv);
-FramelessKit::initialize(true);
+WindowHeler::initialize(true);
 QQmlApplicationEngine engine;
 ```
 
@@ -48,25 +48,31 @@ Widgets 与 QML 混用时，构造 QApplication，然后调用 initialize(true)�
 
 Qt 6.8 官方 QQuickWindow 文档要求：预期创建透明窗口时，在首个 QQuickWindow 创建前开启默认 Alpha 缓冲。该前置操作由 initialize(true) 统一封装；窗口内的 Agent 仍只管理单窗口的背景、材质和交互。
 
-QML 类型注册仍走标准模块构建，注册代码直接包含在 Quick 库中，不生成独立插件。静态/动态构建均只需链接 FramelessKit::Quick，并在创建 engine / 窗口前调用 initialize(true)，无需 Q_IMPORT_QML_PLUGIN；部署时仍需保留模块元数据。
+QML 类型注册仍走标准模块构建，注册代码直接包含在 Quick 库中，不生成独立插件。静态/动态构建均只需链接 WindowHeler::FramelessQuick，并在创建 engine / 窗口前调用 initialize(true)，无需 Q_IMPORT_QML_PLUGIN；部署时仍需保留模块元数据。
 
 ## 常用接入
 
 Widgets 在首次 show 前配置：
 
 ```cpp
-auto *frame = new FramelessKit::WidgetAgent(window);
+auto *frame = new WindowHeler::FramelessWidgetAgent(window);
 frame->setTitleBar(titleBar);
-frame->setMaterial(FramelessKit::Material::Mica);
+
+auto *material = new WindowHeler::MaterialWidgetAgent(window);
+material->setMaterial(WindowHeler::Material::Mica);
 ```
 
 QML 在自己的 Window 内声明：
 
 ```qml
-WindowAgent {
+FramelessAgent {
     window: root
     titleBar: titleBarItem
-    material: WindowAgent.Mica
+}
+
+MaterialAgent {
+    window: root
+    material: MaterialAgent.Mica
 }
 ```
 
@@ -101,11 +107,11 @@ maximizeButton: maximizeButtonItem
 ```bash
 cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build-linux --parallel
-QT_QPA_PLATFORM=xcb ./build-linux/bin/framelesskit_widgets_demo
-QT_QPA_PLATFORM=wayland ./build-linux/bin/framelesskit_quick_demo
+QT_QPA_PLATFORM=xcb ./build-linux/bin/windowheler_widgets_demo
+QT_QPA_PLATFORM=wayland ./build-linux/bin/windowheler_quick_demo
 ```
 
-`FRAMELESSKIT_ENABLE_X11` 与 `FRAMELESSKIT_ENABLE_WAYLAND` 默认开启，可分别设为 `OFF`。源码支持 Qt 6.8+；启用 Wayland 适配后，二进制安装包按构建时的 Qt 精确版本匹配，因为内部使用了 Qt 的 QPA / 高 DPI 私有接口。这些接口不暴露到公共头文件，安装消费者也不需要私有开发头文件。
+`WINDOWHELER_ENABLE_X11` 与 `WINDOWHELER_ENABLE_WAYLAND` 默认开启，可分别设为 `OFF`。源码支持 Qt 6.8+；启用 Wayland 适配后，二进制安装包按构建时的 Qt 精确版本匹配，因为内部使用了 Qt 的 QPA / 高 DPI 私有接口。这些接口不暴露到公共头文件，安装消费者也不需要私有开发头文件。
 
 Linux 的 Solid / Transparent 与移动、缩放、最大化/还原共用原有 Agent API；没有增加公共后端选择接口。模糊、亚克力和云母继续按不支持回退，不模拟全局模糊或阴影。WSLg 未必提供可见系统菜单，在 KDE/GNOME 等实际桌面上的交互表现仍需对应环境验收。
 
@@ -140,4 +146,4 @@ Linux 的 Solid / Transparent 与移动、缩放、最大化/还原共用原有 
 - 最大化按钮是否应自动执行窗口命令？本稿选择保留应用已有点击逻辑，避免同时出现隐式命令和业务连接。
 - 材质只提供一个枚举，是否满足当前使用方式？本稿保持互斥选择，不增加每种效果的布尔开关。
 
-Qt 普通控件接口已按 Qt 6.8 文档核对；自定义 FramelessKit 接口是本项目设计，不是 Qt 自带 API。QML 格式/语法检查不代表模块导入或运行测试通过。
+Qt 普通控件接口已按 Qt 6.8 文档核对；自定义 WindowHeler 接口是本项目设计，不是 Qt 自带 API。QML 格式/语法检查不代表模块导入或运行测试通过。

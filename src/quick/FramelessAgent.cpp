@@ -1,7 +1,8 @@
 #include "../core/Runtime_p.h"
+#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
-#include <FramelessKit/WindowAgent.h>
+#include <WindowHeler/FramelessAgent.h>
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QHash>
@@ -16,7 +17,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace FramelessKit
+namespace WindowHeler
 {
 namespace
 {
@@ -236,14 +237,8 @@ private:
     bool m_background = false;
 };
 
-constexpr auto coreMaterial(WindowAgent::Material value)
-{
-    return static_cast<FramelessKit::Material>(value);
-}
-
-static_assert(int(WindowAgent::Material::MicaAlt) == int(FramelessKit::Material::MicaAlt));
 } // namespace
-class WindowAgent::Private
+class FramelessAgent::Private
 {
 public:
     QPointer<QQuickWindow> window;
@@ -255,8 +250,7 @@ public:
     QMetaObject::Connection titleDestroyed;
     QMetaObject::Connection buttonDestroyed;
     std::unique_ptr<Internal::WindowController> controller;
-    Material material           = Material::Solid;
-    Material notifiedEffective  = Material::Solid;
+    Internal::WindowContextHandle* context = nullptr;
     quint64 bindingRevision     = 0;
     quint64 titleRevision       = 0;
     quint64 buttonRevision      = 0;
@@ -266,29 +260,21 @@ public:
     bool bindingBusy            = false;
     bool bindingPending         = false;
 
-    void finishBinding(WindowAgent* self)
+    void finishBinding(FramelessAgent* self)
     {
         bindingBusy = false;
         if (bindingPending && !destroying)
             self->setWindow(window);
     }
 
-    void notifyEffective(WindowAgent* self)
-    {
-        const auto value = self->effectiveMaterial();
-        if (value == notifiedEffective)
-            return;
-        notifiedEffective = value;
-        emit self->effectiveMaterialChanged();
-    }
-    void updateInteractive(WindowAgent* self, QList<QPointer<QQuickItem>> candidates);
+    void updateInteractive(FramelessAgent* self, QList<QPointer<QQuickItem>> candidates);
 };
 
-void WindowAgent::Private::updateInteractive(WindowAgent* self, QList<QPointer<QQuickItem>> candidates)
+void FramelessAgent::Private::updateInteractive(FramelessAgent* self, QList<QPointer<QQuickItem>> candidates)
 {
     if (destroying)
         return;
-    const QPointer<WindowAgent> guard(self);
+    const QPointer<FramelessAgent> guard(self);
     const QPointer<Internal::WindowController> bound(controller.get());
     const quint64 binding  = bindingRevision;
     const quint64 revision = ++interactiveRevision;
@@ -357,8 +343,8 @@ void WindowAgent::Private::updateInteractive(WindowAgent* self, QList<QPointer<Q
     emit self->interactiveItemsChanged();
 }
 
-WindowAgent::WindowAgent(QObject* parent) : QObject(parent), d(std::make_unique<Private>()) {}
-WindowAgent::~WindowAgent()
+FramelessAgent::FramelessAgent(QObject* parent) : QObject(parent), d(std::make_unique<Private>()) {}
+FramelessAgent::~FramelessAgent()
 {
     d->destroying = true;
     ++d->bindingRevision;
@@ -371,16 +357,19 @@ WindowAgent::~WindowAgent()
     if (retired)
         disconnect(retired.get(), nullptr, this, nullptr);
     retired.reset();
+    Internal::windowheler_release_capability(d->context, Internal::Capability::Frameless);
+    Internal::windowheler_release_context(d->context);
+    d->context = nullptr;
 }
 
-void WindowAgent::classBegin()
+void FramelessAgent::classBegin()
 {
     if (d->destroying)
         return;
     d->complete = false;
 }
 
-void WindowAgent::componentComplete()
+void FramelessAgent::componentComplete()
 {
     if (d->destroying)
         return;
@@ -388,14 +377,14 @@ void WindowAgent::componentComplete()
     bindWindow();
 }
 
-QQuickWindow* WindowAgent::window() const
+QQuickWindow* FramelessAgent::window() const
 {
     return d->window;
 }
 
-void WindowAgent::setWindow(QQuickWindow* value)
+void FramelessAgent::setWindow(QQuickWindow* value)
 {
-    if (!Internal::checkGuiThread("WindowAgent::setWindow") || d->destroying ||
+    if (!Internal::checkGuiThread("FramelessAgent::setWindow") || d->destroying ||
         (!d->bindingPending && d->window == value && (value || (!d->controller && !d->windowDestroyed))))
         return;
     if (d->bindingBusy)
@@ -405,7 +394,7 @@ void WindowAgent::setWindow(QQuickWindow* value)
         d->bindingPending = true;
         return;
     }
-    const QPointer<WindowAgent> guard(this);
+    const QPointer<FramelessAgent> guard(this);
     d->bindingBusy    = true;
     d->bindingPending = false;
     const auto finish = qScopeGuard(
@@ -425,6 +414,9 @@ void WindowAgent::setWindow(QQuickWindow* value)
     if (retired)
         disconnect(retired.get(), nullptr, this, nullptr);
     retired.reset();
+    Internal::windowheler_release_capability(d->context, Internal::Capability::Frameless);
+    Internal::windowheler_release_context(d->context);
+    d->context = nullptr;
     const auto valid = [&] { return guard && !guard->d->destroying && guard->d->bindingRevision == revision; };
     if (!valid())
         return;
@@ -437,7 +429,6 @@ void WindowAgent::setWindow(QQuickWindow* value)
                                              setWindow(nullptr);
                                      });
     }
-    d->notifyEffective(this);
     if (!valid())
         return;
     if (d->complete)
@@ -446,11 +437,11 @@ void WindowAgent::setWindow(QQuickWindow* value)
         emit windowChanged();
 }
 
-void WindowAgent::bindWindow()
+void FramelessAgent::bindWindow()
 {
     if (d->destroying || !d->window || d->controller)
         return;
-    const QPointer<WindowAgent> guard(this);
+    const QPointer<FramelessAgent> guard(this);
     const bool ownsOperation = !d->bindingBusy;
     d->bindingBusy           = true;
     const auto finish        = qScopeGuard(
@@ -465,19 +456,15 @@ void WindowAgent::bindWindow()
     if (!guard || d->destroying || d->bindingRevision != revision || !target || d->window != target)
         return;
     d->controller = std::move(created);
+    d->context = Internal::windowheler_acquire_context(target);
+    Internal::windowheler_retain_capability(d->context, Internal::Capability::Frameless);
     const QPointer<Internal::WindowController> controller(d->controller.get());
     const auto valid = [&]
     {
         return guard && !guard->d->destroying && guard->d->bindingRevision == revision && controller &&
                guard->d->controller.get() == controller && target && guard->d->window == target;
     };
-    connect(d->controller.get(), &Internal::WindowController::effectiveMaterialChanged, this,
-            [this, controller, revision]
-            {
-                if (!d->destroying && d->bindingRevision == revision && d->controller.get() == controller)
-                    d->notifyEffective(this);
-            });
-    connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &WindowAgent::errorOccurred);
+    connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &FramelessAgent::errorOccurred);
     if (!d->controller->isBound())
         return;
     const auto title         = d->titleBar;
@@ -522,21 +509,18 @@ void WindowAgent::bindWindow()
         if (!valid())
             return;
     }
-    controller->setMaterial(coreMaterial(d->material));
-    if (valid())
-        d->notifyEffective(this);
 }
 
-QQuickItem* WindowAgent::titleBar() const
+QQuickItem* FramelessAgent::titleBar() const
 {
     return d->titleBar;
 }
 
-void WindowAgent::setTitleBar(QQuickItem* item)
+void FramelessAgent::setTitleBar(QQuickItem* item)
 {
-    if (!Internal::checkGuiThread("WindowAgent::setTitleBar") || d->destroying || d->titleBar == item)
+    if (!Internal::checkGuiThread("FramelessAgent::setTitleBar") || d->destroying || d->titleBar == item)
         return;
-    const QPointer<WindowAgent> guard(this);
+    const QPointer<FramelessAgent> guard(this);
     const QPointer<QQuickItem> candidate(item);
     const quint64 binding  = d->bindingRevision;
     const quint64 revision = ++d->titleRevision;
@@ -557,15 +541,15 @@ void WindowAgent::setTitleBar(QQuickItem* item)
     emit titleBarChanged();
 }
 
-QQuickItem* WindowAgent::maximizeButton() const
+QQuickItem* FramelessAgent::maximizeButton() const
 {
     return d->maximizeButton;
 }
 
-void WindowAgent::setMaximizeButton(QQuickItem* item)
+void FramelessAgent::setMaximizeButton(QQuickItem* item)
 {
-    const QPointer<WindowAgent> guard(this);
-    if (!Internal::checkGuiThread("WindowAgent::setMaximizeButton") || d->destroying || d->maximizeButton == item)
+    const QPointer<FramelessAgent> guard(this);
+    if (!Internal::checkGuiThread("FramelessAgent::setMaximizeButton") || d->destroying || d->maximizeButton == item)
         return;
     const QPointer<QQuickItem> candidate(item);
     const quint64 binding  = d->bindingRevision;
@@ -587,7 +571,7 @@ void WindowAgent::setMaximizeButton(QQuickItem* item)
     emit maximizeButtonChanged();
 }
 
-QQmlListProperty<QQuickItem> WindowAgent::interactiveItems()
+QQmlListProperty<QQuickItem> FramelessAgent::interactiveItems()
 {
     return { this,
              nullptr,
@@ -599,10 +583,10 @@ QQmlListProperty<QQuickItem> WindowAgent::interactiveItems()
              removeLastInteractiveItem };
 }
 
-void WindowAgent::appendInteractiveItem(QQmlListProperty<QQuickItem>* list, QQuickItem* item)
+void FramelessAgent::appendInteractiveItem(QQmlListProperty<QQuickItem>* list, QQuickItem* item)
 {
-    auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying || !item)
+    auto* self = static_cast<FramelessAgent*>(list->object);
+    if (!Internal::checkGuiThread("FramelessAgent::interactiveItems") || self->d->destroying || !item)
         return;
     if (self->d->interactive.contains(item))
         return;
@@ -611,28 +595,28 @@ void WindowAgent::appendInteractiveItem(QQmlListProperty<QQuickItem>* list, QQui
     self->d->updateInteractive(self, std::move(entries));
 }
 
-qsizetype WindowAgent::interactiveCount(QQmlListProperty<QQuickItem>* list)
+qsizetype FramelessAgent::interactiveCount(QQmlListProperty<QQuickItem>* list)
 {
-    return static_cast<WindowAgent*>(list->object)->d->interactive.size();
+    return static_cast<FramelessAgent*>(list->object)->d->interactive.size();
 }
 
-QQuickItem* WindowAgent::interactiveAt(QQmlListProperty<QQuickItem>* list, qsizetype index)
+QQuickItem* FramelessAgent::interactiveAt(QQmlListProperty<QQuickItem>* list, qsizetype index)
 {
-    return static_cast<WindowAgent*>(list->object)->d->interactive.value(index);
+    return static_cast<FramelessAgent*>(list->object)->d->interactive.value(index);
 }
 
-void WindowAgent::clearInteractiveItems(QQmlListProperty<QQuickItem>* list)
+void FramelessAgent::clearInteractiveItems(QQmlListProperty<QQuickItem>* list)
 {
-    auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying)
+    auto* self = static_cast<FramelessAgent*>(list->object);
+    if (!Internal::checkGuiThread("FramelessAgent::interactiveItems") || self->d->destroying)
         return;
     self->d->updateInteractive(self, {});
 }
 
-void WindowAgent::replaceInteractiveItem(QQmlListProperty<QQuickItem>* list, qsizetype index, QQuickItem* item)
+void FramelessAgent::replaceInteractiveItem(QQmlListProperty<QQuickItem>* list, qsizetype index, QQuickItem* item)
 {
-    auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying || !item || index < 0 ||
+    auto* self = static_cast<FramelessAgent*>(list->object);
+    if (!Internal::checkGuiThread("FramelessAgent::interactiveItems") || self->d->destroying || !item || index < 0 ||
         index >= self->d->interactive.size())
         return;
     auto entries   = self->d->interactive;
@@ -640,10 +624,10 @@ void WindowAgent::replaceInteractiveItem(QQmlListProperty<QQuickItem>* list, qsi
     self->d->updateInteractive(self, std::move(entries));
 }
 
-void WindowAgent::removeLastInteractiveItem(QQmlListProperty<QQuickItem>* list)
+void FramelessAgent::removeLastInteractiveItem(QQmlListProperty<QQuickItem>* list)
 {
-    auto* self = static_cast<WindowAgent*>(list->object);
-    if (!Internal::checkGuiThread("WindowAgent::interactiveItems") || self->d->destroying ||
+    auto* self = static_cast<FramelessAgent*>(list->object);
+    if (!Internal::checkGuiThread("FramelessAgent::interactiveItems") || self->d->destroying ||
         self->d->interactive.isEmpty())
         return;
     auto entries = self->d->interactive;
@@ -651,30 +635,4 @@ void WindowAgent::removeLastInteractiveItem(QQmlListProperty<QQuickItem>* list)
     self->d->updateInteractive(self, std::move(entries));
 }
 
-WindowAgent::Material WindowAgent::material() const
-{
-    return d->material;
-}
-
-WindowAgent::Material WindowAgent::effectiveMaterial() const
-{
-    return d->controller ? static_cast<Material>(d->controller->effectiveMaterial()) : Material::Solid;
-}
-
-void WindowAgent::setMaterial(Material value)
-{
-    if (!Internal::checkGuiThread("WindowAgent::setMaterial") || d->destroying || d->material == value)
-        return;
-    if (int(value) < int(Material::Solid) || int(value) > int(Material::MicaAlt))
-    {
-        emit errorOccurred(QStringLiteral("Invalid material value."));
-        return;
-    }
-    const QPointer<WindowAgent> guard(this);
-    d->material = value;
-    if (d->controller)
-        d->controller->setMaterial(coreMaterial(value));
-    if (guard)
-        emit materialChanged();
-}
-} // namespace FramelessKit
+} // namespace WindowHeler

@@ -2,15 +2,15 @@
 #include "HitTestModel_p.h"
 #include "MaterialController_p.h"
 
-#include <FramelessKit/Export.h>
+#include <WindowHeler/Export.h>
 #include <QHash>
 #include <QMetaObject>
 #include <memory>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // Private cross-library ABI, never installed as a public application header.
-class FRAMELESSKIT_CORE_EXPORT WindowController final : public QObject
+class WINDOWHELER_RUNTIME_EXPORT WindowController final : public QObject
 {
     Q_OBJECT
 public:
@@ -59,4 +59,4 @@ private:
     QString m_lastError;
     bool m_bound = false;
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

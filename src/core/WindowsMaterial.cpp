@@ -4,7 +4,7 @@
 #include <QSettings>
 #include <dwmapi.h>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -61,7 +61,7 @@ QString failure(const char* operation, HRESULT result)
     return QStringLiteral("%1 failed (HRESULT 0x%2).")
         .arg(QString::fromLatin1(operation), QString::number(quint32(result), 16));
 }
-#if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
+#if WINDOWHELER_ENABLE_LEGACY_ACCENT
 struct AccentPolicy
 {
     int state;
@@ -113,7 +113,7 @@ void WindowsMaterial::bind(HWND window)
 bool WindowsMaterial::clear(QString& error)
 {
     bool ok = true;
-#if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
+#if WINDOWHELER_ENABLE_LEGACY_ACCENT
     if (m_accentChanged)
     {
         if (accent(m_window, 0))
@@ -266,7 +266,7 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
         }
         else if (material == Material::Blur)
         {
-#if FRAMELESSKIT_ENABLE_LEGACY_ACCENT
+#if WINDOWHELER_ENABLE_LEGACY_ACCENT
             if (windowsBuild() < 10240 || !accent(m_window, 3))
             {
                 error = QStringLiteral("Legacy Accent Blur is unavailable or rejected by Windows.");
@@ -274,7 +274,7 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             }
             m_accentChanged = true;
 #else
-            error = QStringLiteral("Blur requires FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON.");
+            error = QStringLiteral("Blur requires WINDOWHELER_ENABLE_LEGACY_ACCENT=ON.");
             return false;
 #endif
         }
@@ -308,4 +308,4 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
     m_valid   = true;
     return true;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

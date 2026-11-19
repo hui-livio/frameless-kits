@@ -1,4 +1,4 @@
-# FramelessKit
+# WindowHeler
 
 基于 Qt 6.8+、C++20 的无边框窗口模块，提供 Widgets 与 QML 两种接入方式。
 
@@ -14,7 +14,7 @@
 
 ## 构建（不使用 Presets）
 
-要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。默认构建动态库（`FRAMELESSKIT_BUILD_SHARED_LIBS=ON`），静态/动态使用独立构建和安装目录。Core 仅作为内部 OBJECT 目标编译，不生成或安装独立库；库产物只有 `framelesswidget` 和 `framelessquick`，对应 CMake 接入目标仍为 `FramelessKit::Widgets` 和 `FramelessKit::Quick`。
+要求 CMake 3.24+，Qt 6.8+ 及其兼容 C++20 编译器。Windows 请在对应 MSVC 开发者终端执行；Qt 的路径请按本机安装修改。默认构建动态库（`WINDOWHELER_BUILD_SHARED_LIBS=ON`），静态/动态使用独立构建和安装目录。Runtime 始终编译为动态库 `windowhelerruntime`；Frameless / Material 的 Widgets / Quick 前端根据配置编译为静态库或动态库。对应 CMake target 为 `WindowHeler::FramelessWidgets`、`WindowHeler::FramelessQuick`、`WindowHeler::MaterialWidgets` 和 `WindowHeler::MaterialQuick`。
 
 ```powershell
 cmake -S . -B build/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64 -DBUILD_SHARED_LIBS=OFF
@@ -36,29 +36,31 @@ cmake --install build/vs-static --config Debug --prefix install/vs-static
 
 当前建议每个构建/安装目录只发布一种配置；QML 模块直接链接 Quick 库，不再生成独立插件。静态/动态或 Debug/Release 需要并存时请使用不同的目录。
 
-测试默认关闭，常规构建只生成库和 example。需要现有测试时，显式设置 `-DFRAMELESSKIT_BUILD_TESTING=ON` 后再执行 `ctest --test-dir <构建目录> --output-on-failure`（多配置生成器需加 `-C Debug` 等配置参数）。已有构建目录若缓存了 `ON`，请重新配置为 `-DFRAMELESSKIT_BUILD_TESTING=OFF -DBUILD_TESTING=OFF`。
+测试默认关闭，常规构建只生成库和 example。需要现有测试时，显式设置 `-DWINDOWHELER_BUILD_TESTING=ON` 后再执行 `ctest --test-dir <构建目录> --output-on-failure`（多配置生成器需加 `-C Debug` 等配置参数）。已有构建目录若缓存了 `ON`，请重新配置为 `-DWINDOWHELER_BUILD_TESTING=OFF -DBUILD_TESTING=OFF`。
 
 ### 构建开关
 
 | 参数 | 独立构建默认 | 子项目默认 | 作用 |
 | --- | --- | --- | --- |
-| `FRAMELESSKIT_BUILD_SHARED_LIBS` | `ON`¹ | `ON`¹ | 静态库 / 动态库 |
-| `FRAMELESSKIT_BUILD_WIDGETS` | `ON` | `ON` | Widgets 适配器 |
-| `FRAMELESSKIT_BUILD_QUICK` | `ON` | `ON` | Quick 适配器和 QML 模块 |
-| `FRAMELESSKIT_BUILD_EXAMPLES` | `ON` | `OFF` | 示例应用 |
-| `FRAMELESSKIT_BUILD_TESTING` | `OFF` | `OFF` | 现有测试与 Qt Test 依赖 |
-| `FRAMELESSKIT_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 元数据和 CMake 包的安装规则 |
-| `FRAMELESSKIT_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows Blur 兼容路径；可关闭以禁用私有 Accent API，不影响系统 Acrylic / Mica / MicaAlt |
+| `WINDOWHELER_BUILD_SHARED_LIBS` | `ON`¹ | `ON`¹ | 静态库 / 动态库 |
+| `WINDOWHELER_BUILD_FRAMELESS` | `ON` | `ON` | Frameless 功能模块 |
+| `WINDOWHELER_BUILD_MATERIAL` | `ON` | `ON` | Material 功能模块 |
+| `WINDOWHELER_BUILD_WIDGETS` | `ON` | `ON` | Widgets 前端 |
+| `WINDOWHELER_BUILD_QUICK` | `ON` | `ON` | Quick 前端和 QML 模块 |
+| `WINDOWHELER_BUILD_EXAMPLES` | `ON` | `OFF` | 示例应用 |
+| `WINDOWHELER_BUILD_TESTING` | `OFF` | `OFF` | 现有测试与 Qt Test 依赖 |
+| `WINDOWHELER_INSTALL` | `ON` | `OFF` | 库、公开头文件、QML 元数据和 CMake 包的安装规则 |
+| `WINDOWHELER_ENABLE_LEGACY_ACCENT` | `ON` | `ON` | Windows Blur 兼容路径；可关闭以禁用私有 Accent API，不影响系统 Acrylic / Mica / MicaAlt |
 
-¹ 如果父工程或命令行已经设置标准 `BUILD_SHARED_LIBS`，首次配置时以它作为默认值；显式设置 `FRAMELESSKIT_BUILD_SHARED_LIBS` 可独立选择本库类型，不修改父工程的选择。
+¹ 如果父工程或命令行已经设置标准 `BUILD_SHARED_LIBS`，首次配置时以它作为默认值；显式设置 `WINDOWHELER_BUILD_SHARED_LIBS` 可独立选择本库类型，不修改父工程的选择。
 
-纯 Widgets：追加 `-DFRAMELESSKIT_BUILD_QUICK=OFF`。纯 Quick：追加 `-DFRAMELESSKIT_BUILD_WIDGETS=OFF`。Core 为内部对象目标，不再单独交付；同时关闭两个前端时不会生成库产物。关闭测试可避免 Qt Test 依赖。Qt Quick Controls 只由 QML 演示使用，不是库的 C++ 链接依赖。
+纯 Widgets：追加 `-DWINDOWHELER_BUILD_QUICK=OFF`；纯 Quick：追加 `-DWINDOWHELER_BUILD_WIDGETS=OFF`。只使用无边框：追加 `-DWINDOWHELER_BUILD_MATERIAL=OFF`；只使用材质：追加 `-DWINDOWHELER_BUILD_FRAMELESS=OFF`。Runtime 始终交付；关闭某个功能或前端时不生成对应功能产物。关闭测试可避免 Qt Test 依赖。Qt Quick Controls 只由 QML 演示使用，不是库的 C++ 链接依赖。
 
-兼容旧命令行：独立构建首次配置时，旧的 `BUILD_WIDGETS`、`BUILD_QUICK`、`BUILD_EXAMPLES`、`BUILD_TESTING`、`ENABLE_LEGACY_ACCENT` 可以提供对应新开关的默认值。新开关一旦设置或写入缓存，后续请修改 `FRAMELESSKIT_*`；作为子项目时忽略这些旧名称，避免与父工程冲突。FramelessKit 不定义全局 `BUILD_SHARED_LIBS` 选项。
+兼容旧命令行：独立构建首次配置时，旧的 `BUILD_WIDGETS`、`BUILD_QUICK`、`BUILD_EXAMPLES`、`BUILD_TESTING`、`ENABLE_LEGACY_ACCENT` 可以提供对应新开关的默认值。新开关一旦设置或写入缓存，后续请修改 `WINDOWHELER_*`；作为子项目时忽略这些旧名称，避免与父工程冲突。WindowHeler 不定义全局 `BUILD_SHARED_LIBS` 选项。
 
 ### 作为其他工程的子项目
 
-支持直接 `add_subdirectory()`，无需先安装或调用 `find_package(FramelessKit)`；目标名称与安装消费保持一致。子项目默认不添加 example、测试或安装内容，也不覆盖父工程设置的运行库、归档和 QML 输出目录。
+支持直接 `add_subdirectory()`，无需先安装或调用 `find_package(WindowHeler)`；目标名称与安装消费保持一致。子项目默认不添加 example、测试或安装内容，也不覆盖父工程设置的运行库、归档和 QML 输出目录。
 
 ```cmake
 cmake_minimum_required(VERSION 3.24)
@@ -68,28 +70,28 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 qt_standard_project_setup(REQUIRES 6.8)
 
 # 普通变量即可，不必 FORCE 修改父工程或用户的缓存。
-set(FRAMELESSKIT_BUILD_QUICK OFF)
-# 可选：仅将 FramelessKit 编译为静态库，不影响父工程其他库。
-# set(FRAMELESSKIT_BUILD_SHARED_LIBS OFF)
+set(WINDOWHELER_BUILD_QUICK OFF)
+# 可选：仅将 WindowHeler 编译为静态库，不影响父工程其他库。
+# set(WINDOWHELER_BUILD_SHARED_LIBS OFF)
 add_subdirectory(third_party/frameless-kits)
 
 qt_add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE FramelessKit::Widgets)
+target_link_libraries(my_app PRIVATE WindowHeler::FramelessWidgets WindowHeler::MaterialWidgets)
 ```
 
-`add_subdirectory()` 也可使用仓库的绝对路径并提供二进制目录；通过 `FetchContent_MakeAvailable()` 引入时采用同样的子项目默认值。父工程若要启用本库安装，需在接入前显式设置 `FRAMELESSKIT_INSTALL ON`；需要现有测试时设置 `FRAMELESSKIT_BUILD_TESTING ON`，并在父工程根目录 `include(CTest)` / `enable_testing()` 以便根目录 CTest 发现测试。
+`add_subdirectory()` 也可使用仓库的绝对路径并提供二进制目录；通过 `FetchContent_MakeAvailable()` 引入时采用同样的子项目默认值。父工程若要启用本库安装，需在接入前显式设置 `WINDOWHELER_INSTALL ON`；需要现有测试时设置 `WINDOWHELER_BUILD_TESTING ON`，并在父工程根目录 `include(CTest)` / `enable_testing()` 以便根目录 CTest 发现测试。
 
-Quick 接入将组件改为 Qt `Qml Quick`，链接 `FramelessKit::Quick` 即可；静态版同样不需要独立插件或 `Q_IMPORT_QML_PLUGIN`，与下方安装消费方式一致。构建树中的 QML 导入根目录可从目标读取，不依赖子项目的局部变量：
+Quick 接入将组件改为 Qt `Qml Quick`，链接 `WindowHeler::FramelessQuick` 即可；静态版同样不需要独立插件或 `Q_IMPORT_QML_PLUGIN`，与下方安装消费方式一致。构建树中的 QML 导入根目录可从目标读取，不依赖子项目的局部变量：
 
 ```cmake
-get_target_property(fk_qml_module_dir FramelessKit::Quick QT_QML_MODULE_OUTPUT_DIRECTORY)
-get_filename_component(fk_qml_import_path "${fk_qml_module_dir}" DIRECTORY)
+get_target_property(wh_frameless_qml_module_dir WindowHeler::FramelessQuick QT_QML_MODULE_OUTPUT_DIRECTORY)
+get_filename_component(wh_qml_import_path "${wh_frameless_qml_module_dir}" DIRECTORY)
 target_compile_definitions(my_app PRIVATE
-    FRAMELESSKIT_APP_QML_IMPORT_PATH="${fk_qml_import_path}"
+    WINDOWHELER_APP_QML_IMPORT_PATH="${wh_qml_import_path}"
 )
 ```
 
-创建 QML engine 后使用 `engine.addImportPath(QString::fromUtf8(FRAMELESSKIT_APP_QML_IMPORT_PATH))`，并在创建 engine / 窗口前调用 `FramelessKit::initialize(true)`。
+创建 QML engine 后使用 `engine.addImportPath(QString::fromUtf8(WINDOWHELER_APP_QML_IMPORT_PATH))`，并在创建 engine / 窗口前调用 `WindowHeler::initialize(true)`。
 
 Windows 动态构建时，父工程应统一设置 `CMAKE_RUNTIME_OUTPUT_DIRECTORY`，或将依赖 DLL 复制到应用目录（Qt 平台插件仍需按正常 Qt 应用部署）：
 
@@ -105,65 +107,66 @@ endif()
 
 ### 统一导出头与编译宏
 
-所有模块共用仓库内的 `include/FramelessKit/Export.h`，不再由 CMake 生成导出头；直接包含源码头文件也不需要先运行 configure。
+所有模块共用仓库内的 `include/WindowHeler/Export.h`，不再由 CMake 生成导出头；直接包含源码头文件也不需要先运行 configure。
 
 | 编译方式 | 需要传递的宏 |
 | --- | --- |
 | 使用动态库（默认） | 无；默认将各模块符号标记为导入 |
-| 构建供动态库嵌入的 Core 对象 | 在 Core 编译单元中定义 `FRAMELESSKIT_BUILD_CORE` |
-| 构建 Widgets 动态库 | 在 Widgets 编译单元中定义 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_WIDGETS` |
-| 构建 Quick 动态库 | 在 Quick 编译单元中定义 `FRAMELESSKIT_BUILD_CORE`、`FRAMELESSKIT_BUILD_QUICK` |
-| 构建/使用静态库，或将源码直接编入应用 | 为相关编译单元统一定义 `FRAMELESSKIT_STATIC`，关闭所有导入/导出修饰 |
+| 构建供动态库嵌入的 Core 对象 | 在 Core 编译单元中定义 `WINDOWHELER_BUILD_CORE` |
+| 构建 Widgets 动态库 | 在 Widgets 编译单元中定义 `WINDOWHELER_BUILD_CORE`、`WINDOWHELER_BUILD_WIDGETS` |
+| 构建 Quick 动态库 | 在 Quick 编译单元中定义 `WINDOWHELER_BUILD_CORE`、`WINDOWHELER_BUILD_QUICK` |
+| 构建/使用静态库，或将源码直接编入应用 | 为相关编译单元统一定义 `WINDOWHELER_STATIC`，关闭所有导入/导出修饰 |
 
-三个模块仍各用 `FRAMELESSKIT_CORE_EXPORT`、`FRAMELESSKIT_WIDGETS_EXPORT`、`FRAMELESSKIT_QUICK_EXPORT` 标注接口，但定义集中于同一个头文件。不要向动态库消费者传播 `FRAMELESSKIT_BUILD_*`，也不要在编译某一个 DLL 时同时定义三个构建宏。
+三个模块仍各用 `WINDOWHELER_CORE_EXPORT`、`WINDOWHELER_WIDGETS_EXPORT`、`WINDOWHELER_QUICK_EXPORT` 标注接口，但定义集中于同一个头文件。不要向动态库消费者传播 `WINDOWHELER_BUILD_*`，也不要在编译某一个 DLL 时同时定义三个构建宏。
 
-使用本项目 CMake targets 时，构建宏由各 DLL target 私有传递；静态 target 会公开传递 `FRAMELESSKIT_STATIC`。使用其他构建方式时，由用户按上表传递编译宏。
+使用本项目 CMake targets 时，构建宏由各 DLL target 私有传递；静态 target 会公开传递 `WINDOWHELER_STATIC`。使用其他构建方式时，由用户按上表传递编译宏。
 
 ```cmake
 # 用户工程中直接编译源码 / 链接手动构建的静态库时：
-target_compile_definitions(my_app PRIVATE FRAMELESSKIT_STATIC)
+target_compile_definitions(my_app PRIVATE WINDOWHELER_STATIC)
 ```
 
 这些宏只决定符号可见性；直接集成源码仍需正常配置 Qt AUTOMOC、QML 类型注册与 Quick 初始化接入。
 ## 安装后使用
 
-通过 `CMAKE_PREFIX_PATH` 或 `FramelessKit_DIR` 指向安装目录。仅公开头文件会安装；`src/` 中的 Controller、HostAdapter 等内部头文件不会安装。
+通过 `CMAKE_PREFIX_PATH` 或 `WindowHeler_DIR` 指向安装目录。仅公开头文件会安装；`src/` 中的 Controller、HostAdapter 等内部头文件不会安装。
 
 ```cmake
-find_package(FramelessKit 0.1 CONFIG REQUIRED COMPONENTS Widgets)
+find_package(WindowHeler 0.1 CONFIG REQUIRED COMPONENTS Widgets)
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE FramelessKit::Widgets)
+target_link_libraries(my_app PRIVATE WindowHeler::FramelessWidgets WindowHeler::MaterialWidgets)
 ```
 
 ```cpp
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WidgetAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/FramelessWidgetAgent.h>
 
 QApplication app(argc, argv);
-FramelessKit::initialize();
+WindowHeler::initialize();
 QWidget window;
-auto *agent = new FramelessKit::WidgetAgent(&window);
+auto *frame = new WindowHeler::FramelessWidgetAgent(&window);
+auto *material = new WindowHeler::MaterialWidgetAgent(&window);
 agent->setTitleBar(titleBar); // titleBar 是本窗口中的 QWidget
 ```
 
 Quick / QML：
 
 ```cmake
-find_package(FramelessKit 0.1 CONFIG REQUIRED COMPONENTS Quick)
+find_package(WindowHeler 0.1 CONFIG REQUIRED COMPONENTS Quick)
 add_executable(my_qml_app main.cpp)
-target_link_libraries(my_qml_app PRIVATE FramelessKit::Quick)
+target_link_libraries(my_qml_app PRIVATE WindowHeler::FramelessQuick)
 ```
 
-`main.cpp` 中在创建 engine / 窗口前调用 `FramelessKit::initialize(true)`；静态/动态包均不需要单独导入插件。
+`main.cpp` 中在创建 engine / 窗口前调用 `WindowHeler::initialize(true)`；静态/动态包均不需要单独导入插件。
 
-构建 target 自动接入 Quick 初始化适配，不需要应用手工注册回调；纯 Widgets 的二进制不链接 QtQuick。QML 使用 `import FramelessKit`、`WindowAgent` 及 `WindowAgent.Solid` 等枚举。安装后的 QML 搜索根目录由 `FramelessKit_QML_IMPORT_PATH` 给出，加载 engine 时使用 `addImportPath`，或按应用部署方式设置导入路径。
+构建 target 自动接入 Quick 初始化适配，不需要应用手工注册回调；纯 Widgets 的二进制不链接 QtQuick。QML 使用 `import WindowHeler.Frameless` / `WindowHeler.Material`、`FramelessAgent` 和 `MaterialAgent`。安装后的 QML 搜索根目录由 `WindowHeler_QML_IMPORT_PATH` 给出，加载 engine 时使用 `addImportPath`，或按应用部署方式设置导入路径。
 
-动态包还需要部署 `bin` 中的库、`lib/qml/FramelessKit` 中的 QML 元数据以及匹配的 Qt 运行库。模块静态不等于 Qt 静态。本工程不承诺运行中热卸载或同时加载不同静态/动态版本。
+动态包还需要部署 `bin` 中的库、`lib/qml/WindowHeler` 中的 QML 元数据以及匹配的 Qt 运行库。模块静态不等于 Qt 静态。本工程不承诺运行中热卸载或同时加载不同静态/动态版本。
 
 ## 示例与测试
 
-- `framelesskit_widgets_demo`：Widgets 最小 API、交互区域和材质请求。
-- `framelesskit_quick_demo`：QML 注册、声明式配置和材质请求。
+- `windowheler_widgets_demo`：Widgets 最小 API、交互区域和材质请求。
+- `windowheler_quick_demo`：QML 注册、声明式配置和材质请求。
 - `ctest`：核心命中优先级、初始化、生命周期、弱引用、属性/列表、两个示例启动、QML 加载，以及安装后 Widgets / Quick / 混合应用的独立 configure → build → run。
 
 CTest 自动添加匹配 Qt 的 DLL 路径，并使用 `offscreen` 平台，因此测试不要求展示窗口。手动启动示例时，请将对应 Qt `bin` 加入 PATH（或使用 `windeployqt` 部署）；动态版还需保证本模块 DLL 可加载。自动测试不代表视觉效果或 Snap 已验收。
@@ -174,15 +177,15 @@ CTest 自动添加匹配 Qt 的 DLL 路径，并使用 `offscreen` 平台，因�
 
 ```powershell
 $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
-.\build\static\bin\Debug\framelesskit_widgets_demo.exe
-.\build\static\bin\Debug\framelesskit_quick_demo.exe
+.\build\static\bin\Debug\windowheler_widgets_demo.exe
+.\build\static\bin\Debug\windowheler_quick_demo.exe
 ```
 
 两个示例都支持 `--material=Solid|Transparent|Blur|Acrylic|Mica|MicaAlt`（不区分大小写）、`--cycle-materials` 和 `--smoke-test`。初始材质在首次显示前设置；自动循环包含不支持请求之后的恢复切换。`--smoke-test` 在短暂运行或完成循环后退出，不进行像素/视觉验收。
 
 ```powershell
-.\build\material-shared\bin\Debug\framelesskit_widgets_demo.exe --material=Blur
-.\build\material-shared\bin\Debug\framelesskit_quick_demo.exe --cycle-materials --smoke-test
+.\build\material-shared\bin\Debug\windowheler_widgets_demo.exe --material=Blur
+.\build\material-shared\bin\Debug\windowheler_quick_demo.exe --cycle-materials --smoke-test
 ```
 
 ## 窗口材质
@@ -197,7 +200,7 @@ $env:PATH = "C:\Qt\6.8.3\msvc2022_64\bin;$env:PATH"
 
 - 在首次 `show()` 前绑定 Agent；QML 在自己的 Window 内声明 Agent，并在创建窗口前调用 `initialize(true)`。模块预留 alpha 表面，不会为了切换材质隐式销毁/重建已有窗口。已创建的不透明表面会明确诊断并降级。
 - Widgets 仅调整顶层背景相关属性；Quick 仅调整窗口清屏颜色。切回 Solid 或解绑时恢复本模块接管的状态，不改变业务控件的 opacity、不强制更换渲染器/Controls 样式。已有自定义 paintEvent、样式表背景或不透明 QML 面板仍可能遮挡材质。
-- Windows 保留原生 DWM 边框与阴影。现代 Acrylic / Mica / MicaAlt 使用系统 backdrop；`FRAMELESSKIT_ENABLE_LEGACY_ACCENT=ON` 仅为 Blur 动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代系统 backdrop。
+- Windows 保留原生 DWM 边框与阴影。现代 Acrylic / Mica / MicaAlt 使用系统 backdrop；`WINDOWHELER_ENABLE_LEGACY_ACCENT=ON` 仅为 Blur 动态解析未公开的 `SetWindowCompositionAttribute`，不承诺跨系统版本稳定。关闭该开关不影响现代系统 backdrop。
 - Windows 合成关闭、远程会话、高对比度或系统透明效果关闭，以及 macOS“减少透明度”，会导致非 Solid 请求降级。主题/调色板、系统策略和原生表面生命周期变化会重新应用所保留的请求。
 - `effectiveMaterial` 表示配置成功，不保证合成器此刻一定显示某种视觉效果。窗口未具备原生表面时请求保持 pending，实际配置暂为 Solid；初始化完成后自动重放。此属性不能替代实机观察。
 
@@ -212,9 +215,9 @@ macOS 自动选择 Cocoa 后端，Core 私有链接 AppKit / QuartzCore / CoreGr
 ```sh
 cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_PREFIX_PATH=/path/to/Qt/6.8.3/macos -DBUILD_TESTING=OFF
-cmake --build build/macos --target framelesskit_widgets_demo framelesskit_quick_demo
-./build/macos/bin/framelesskit_widgets_demo
-./build/macos/bin/framelesskit_quick_demo
+cmake --build build/macos --target windowheler_widgets_demo windowheler_quick_demo
+./build/macos/bin/windowheler_widgets_demo
+./build/macos/bin/windowheler_quick_demo
 ```
 
 两个示例在 macOS 上保留系统红黄绿按钮，隐藏重复的自定义窗口按钮，并给左上角原生控件预留空间。请在 Mac 上检查：

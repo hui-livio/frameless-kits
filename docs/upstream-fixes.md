@@ -38,6 +38,6 @@
 
 - X11 只在 Qt 构建提供 `QX11Application` 且 XCB 开发头可用时编译。`libxcb.so.1` 在运行时加载；不增加 Xlib、XCB 或 xcb QPA 插件的直接链接依赖。发送之前检查当前 root 的 `_NET_SUPPORTED` 是否包含 `_GTK_SHOW_WINDOW_MENU`，并验证协议响应、真实原生窗口、坐标和 flush。收到服务器确认仅表示请求被接受，不表示菜单实际显示。
 - Wayland 只在同一个 Qt 安装提供 `Qt6::GuiPrivate`、Wayland 原生接口和 client 头时编译。安装 target 和 consumer 按构建时 Qt 精确版本匹配；消费者不需要安装 private headers。运行时通过 Qt Wayland native interface 取得当前 spontaneous event 的 seat/serial 和 xdg_toplevel。嵌套输入、表面替换或 serial 改变时拒绝旧请求；menu request 仅在当前输入派发栈同步发送。协议未公开可查询的当前 menu capability，compositor 可合法静默忽略请求。
-- X11 或 Wayland 适配可分别用 `FRAMELESSKIT_ENABLE_X11=OFF` / `FRAMELESSKIT_ENABLE_WAYLAND=OFF` 禁用；依赖/接口不可用时配置保持成功并回到 Qt move/resize。
+- X11 或 Wayland 适配可分别用 `WINDOWHELER_ENABLE_X11=OFF` / `WINDOWHELER_ENABLE_WAYLAND=OFF` 禁用；依赖/接口不可用时配置保持成功并回到 Qt move/resize。
 - WSL Arch / Qt 6.12.0：Release shared build、static build、protocols-disabled build 均通过；Widgets / Quick 在 X11 与 Wayland 的启动和材质循环通过。安装后的 shared / static 外部消费者也通过。WSLg Wayland v1 / Weston 未提供可见系统菜单，XWayland `_NET_SUPPORTED` 未提供 GTK 菜单 atom；所以探针分别确认明确诊断或当前输入 serial 缺失，不声称观察到了菜单 UI。
 - 忽略的 `build/linux-menu-probe-src` 使用公开 Agents 跑 30 个 X11 / Wayland 输入、交互区、surface 生命周期和销毁/重绑场景，两个进程均以 0 退出。没有新增 UT/CTest 目标或链接外部平台库。

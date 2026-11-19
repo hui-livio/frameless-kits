@@ -1,13 +1,13 @@
-#include <FramelessKit/Export.h>
+#include <WindowHeler/Export.h>
 #include <QGuiApplication>
 #include <QQuickWindow>
 #include <QtCore/qtsymbolmacros.h>
 
-QT_DECLARE_EXTERN_SYMBOL_VOID(qml_register_types_FramelessKit)
+QT_DECLARE_EXTERN_SYMBOL_VOID(qml_register_types_WindowHeler_Frameless)
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
-FRAMELESSKIT_QUICK_EXPORT bool prepareQuick(QString& error)
+WINDOWHELER_QUICK_EXPORT bool prepareQuick(QString& error)
 {
     for (QWindow* window : QGuiApplication::allWindows())
     {
@@ -19,8 +19,8 @@ FRAMELESSKIT_QUICK_EXPORT bool prepareQuick(QString& error)
     }
     // Keep Qt's generated registrar even when Quick is a static archive.
     // Its QQmlModuleRegistration handles registration; no separate plugin is needed.
-    QT_KEEP_SYMBOL(qml_register_types_FramelessKit)
+    QT_KEEP_SYMBOL(qml_register_types_WindowHeler_Frameless)
     QQuickWindow::setDefaultAlphaBuffer(true);
     return true;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

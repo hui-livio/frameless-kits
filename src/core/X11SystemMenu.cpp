@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <xcb/xcb.h>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -270,4 +270,4 @@ bool showX11SystemMenu(QWindow* window, QPointF localPosition, quint32 timestamp
     // The server accepted the request; this does not acknowledge a visible menu.
     return true;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

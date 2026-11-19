@@ -1,6 +1,6 @@
 #include "Runtime_p.h"
 
-#include <FramelessKit/Initialization.h>
+#include <WindowHeler/Initialization.h>
 #include <QGuiApplication>
 #include <QThread>
 #include <QWindow>
@@ -12,7 +12,7 @@ class RuntimeTests final : public QObject
 private slots:
     void validationAndIdempotence()
     {
-        using namespace FramelessKit;
+        using namespace WindowHeler;
         QVERIFY(!Internal::isInitialized());
         auto* window = new QWindow;
         initialize();
@@ -35,7 +35,7 @@ private slots:
 };
 int main(int argc, char** argv)
 {
-    FramelessKit::initialize(); // No application: diagnostic, not a crash or implicit success.
+    WindowHeler::initialize(); // No application: diagnostic, not a crash or implicit success.
     QGuiApplication app(argc, argv);
     RuntimeTests tests;
     return QTest::qExec(&tests, argc, argv);

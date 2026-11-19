@@ -2,7 +2,7 @@
 #include "HostAdapter_p.h"
 #include "PlatformBackend_p.h"
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 // Requests survive unavailable/recreated surfaces. Applied records the last
 // confirmed configuration, not a guarantee of the currently displayed effect.
@@ -69,4 +69,4 @@ public:
         return false;
     }
 };
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

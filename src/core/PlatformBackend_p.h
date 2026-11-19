@@ -1,5 +1,5 @@
 #pragma once
-#include <FramelessKit/Material.h>
+#include <WindowHeler/Material.h>
 #include <QCursor>
 #include <QObject>
 #include <QPointer>
@@ -10,7 +10,7 @@
 
 class QWindow;
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 class HostAdapter;
 class HitTestModel;
@@ -82,4 +82,4 @@ private:
 std::unique_ptr<PlatformBackend> createQtFallbackBackend(HostAdapter&, const HitTestModel&,
                                                          PlatformBackend::Diagnostic);
 std::unique_ptr<PlatformBackend> createPlatformBackend(HostAdapter&, const HitTestModel&, PlatformBackend::Diagnostic);
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

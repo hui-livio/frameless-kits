@@ -9,7 +9,7 @@ run("${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${CONFIG}" --prefix "$
 # Binary packages must not install implementation sources for consumers to compile.
 file(STRINGS "${BUILD_DIR}/install_manifest.txt" installed_files)
 foreach(installed_file IN LISTS installed_files)
-    if(installed_file MATCHES "(FramelessKitCoreTargets|fk_core|fk_quickplugin)")
+    if(installed_file MATCHES "(WindowHelerTargets|windowheler_runtime)")
         message(FATAL_ERROR "Installed package contains an internal library: ${installed_file}")
     endif()
     if(installed_file MATCHES "\\.(c|cc|cpp|cxx)$")
@@ -38,7 +38,7 @@ foreach(frontend IN LISTS frontends)
     run("${CMAKE_COMMAND}" -S "${SOURCE_DIR}/tests/consumer" -B "${consumer_dir}"
         ${generator_args} "-DCMAKE_CXX_COMPILER=${CXX_COMPILER}"
         "-DCMAKE_BUILD_TYPE=${CONFIG}" "-DCONSUMER_FRONTEND=${frontend}"
-        "-DFramelessKit_DIR=${prefix}/${INSTALL_LIBDIR}/cmake/FramelessKit"
+        "-DWindowHeler_DIR=${prefix}/${INSTALL_LIBDIR}/cmake/WindowHeler"
         "-DQt6_DIR=${QT6_DIR}"
     )
     run("${CMAKE_COMMAND}" --build "${consumer_dir}" --config "${CONFIG}" --parallel 4)

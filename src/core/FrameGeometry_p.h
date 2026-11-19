@@ -1,7 +1,7 @@
 #pragma once
 #include "HostAdapter_p.h"
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 inline bool windowCapability(const HostAdapter& host, Qt::WindowType hint)
 {
@@ -51,4 +51,4 @@ inline QPointF logicalClientPoint(QPointF nativeScreen, QPointF nativeClientOrig
 {
     return (nativeScreen - nativeClientOrigin) / scale;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

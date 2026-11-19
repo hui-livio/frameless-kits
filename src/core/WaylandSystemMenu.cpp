@@ -14,7 +14,7 @@
 #include <limits>
 #include <wayland-client-core.h>
 
-namespace FramelessKit::Internal
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -136,4 +136,4 @@ bool showWaylandSystemMenu(QWindow* window, QPointF localPosition, bool hasInput
     // On EAGAIN, Qt owns the display and its next flush will send the queued data.
     return true;
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

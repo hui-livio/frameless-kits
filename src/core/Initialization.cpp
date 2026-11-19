@@ -1,20 +1,20 @@
 #include "Runtime_p.h"
 
-#include <FramelessKit/Initialization.h>
+#include <WindowHeler/Initialization.h>
 #include <QGuiApplication>
 #include <QLoggingCategory>
 #include <QThread>
 #include <QVariant>
 
-Q_LOGGING_CATEGORY(fkRuntime, "framelesskit.runtime")
-namespace FramelessKit
+Q_LOGGING_CATEGORY(fkRuntime, "windowheler.runtime")
+namespace WindowHeler
 {
 namespace
 {
 // Each frontend embeds Core. Keep the initialization flags on the application
 // so both DLLs observe the same state when Widgets and Quick are linked together.
-constexpr auto commonInitializedProperty    = "_framelesskit_common_initialized";
-constexpr auto quickInitializedProperty     = "_framelesskit_quick_initialized";
+constexpr auto commonInitializedProperty    = "_windowheler_common_initialized";
+constexpr auto quickInitializedProperty     = "_windowheler_quick_initialized";
 // Constant initialization allows the consumer bootstrap to run before main().
 Internal::QuickInitializer quickInitializer = nullptr;
 } // namespace
@@ -43,7 +43,7 @@ bool isInitialized(bool quick)
 } // namespace Internal
 void initialize(bool useQML)
 {
-    if (!Internal::checkGuiThread("FramelessKit::initialize"))
+    if (!Internal::checkGuiThread("WindowHeler::initialize"))
         return;
     if (!Internal::isInitialized())
     {
@@ -58,7 +58,7 @@ void initialize(bool useQML)
         return;
     if (!quickInitializer)
     {
-        qCCritical(fkRuntime) << "initialize(true) requires linking FramelessKit::Quick";
+        qCCritical(fkRuntime) << "initialize(true) requires linking WindowHeler::FramelessQuick";
         return;
     }
     QString error;
@@ -69,4 +69,4 @@ void initialize(bool useQML)
     }
     QCoreApplication::instance()->setProperty(quickInitializedProperty, true);
 }
-} // namespace FramelessKit
+} // namespace WindowHeler

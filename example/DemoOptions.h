@@ -1,5 +1,5 @@
 #pragma once
-#include <FramelessKit/Material.h>
+#include <WindowHeler/Material.h>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QMetaEnum>
@@ -8,9 +8,9 @@
 #include <QVariant>
 #include <array>
 
-inline FramelessKit::Material demoInitialMaterial(const QStringList& arguments)
+inline WindowHeler::Material demoInitialMaterial(const QStringList& arguments)
 {
-    const auto values = QMetaEnum::fromType<FramelessKit::Material>();
+    const auto values = QMetaEnum::fromType<WindowHeler::Material>();
     for (const auto& argument : arguments)
     {
         if (!argument.startsWith(QStringLiteral("--material=")))
@@ -18,14 +18,14 @@ inline FramelessKit::Material demoInitialMaterial(const QStringList& arguments)
         const QString name = argument.mid(11);
         for (int i = 0; i < values.keyCount(); ++i)
             if (name.compare(QString::fromLatin1(values.key(i)), Qt::CaseInsensitive) == 0)
-                return static_cast<FramelessKit::Material>(values.value(i));
+                return static_cast<WindowHeler::Material>(values.value(i));
         qFatal("Unknown material: %s", qPrintable(name));
     }
-    return FramelessKit::Material::Solid;
+    return WindowHeler::Material::Solid;
 }
 inline void printDemoMaterial(QObject* agent)
 {
-    const auto values = QMetaEnum::fromType<FramelessKit::Material>();
+    const auto values = QMetaEnum::fromType<WindowHeler::Material>();
     qInfo().nospace() << "material=" << values.valueToKey(agent->property("material").toInt())
                       << "; effectiveMaterial=" << values.valueToKey(agent->property("effectiveMaterial").toInt());
 }

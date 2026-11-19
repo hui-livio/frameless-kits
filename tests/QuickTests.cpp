@@ -1,7 +1,7 @@
 #include "Runtime_p.h"
 
-#include <FramelessKit/Initialization.h>
-#include <FramelessKit/WindowAgent.h>
+#include <WindowHeler/Initialization.h>
+#include <WindowHeler/FramelessAgent.h>
 #include <QGuiApplication>
 #include <QQuickWindow>
 #include <QtTest>
@@ -12,7 +12,7 @@ class QuickTests final : public QObject
 private slots:
     void initializationTransitions()
     {
-        using namespace FramelessKit;
+        using namespace WindowHeler;
         QVERIFY(!Internal::isInitialized());
         initialize(false);
         QVERIFY(Internal::isInitialized());
@@ -31,7 +31,7 @@ private slots:
     }
     void propertyOrderAndLists()
     {
-        using Agent = FramelessKit::WindowAgent;
+        using Agent = WindowHeler::FramelessAgent;
         QQuickWindow window;
         QQuickItem bar(window.contentItem()), button(&bar);
         Agent agent;
@@ -62,7 +62,7 @@ private slots:
     }
     void destroyedItemsAndHost()
     {
-        using Agent  = FramelessKit::WindowAgent;
+        using Agent  = WindowHeler::FramelessAgent;
         auto* window = new QQuickWindow;
         Agent agent;
         agent.setWindow(window);

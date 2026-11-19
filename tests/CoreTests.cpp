@@ -1,11 +1,11 @@
 #include "WindowController.h"
 
-#include <FramelessKit/Initialization.h>
+#include <WindowHeler/Initialization.h>
 #include <QGuiApplication>
 #include <QtTest>
 
-using namespace FramelessKit;
-using namespace FramelessKit::Internal;
+using namespace WindowHeler;
+using namespace WindowHeler::Internal;
 class TestHost final : public HostAdapter
 {
 public:
@@ -134,7 +134,7 @@ private slots:
 int main(int argc, char** argv)
 {
     QGuiApplication app(argc, argv);
-    FramelessKit::initialize();
+    WindowHeler::initialize();
     CoreTests tests;
     return QTest::qExec(&tests, argc, argv);
 }

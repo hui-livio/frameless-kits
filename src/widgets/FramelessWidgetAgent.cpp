@@ -1,7 +1,8 @@
 #include "../core/Runtime_p.h"
+#include "../core/RuntimeContext_p.h"
 #include "../core/WindowController.h"
 
-#include <FramelessKit/WidgetAgent.h>
+#include <WindowHeler/FramelessWidgetAgent.h>
 #include <QAbstractButton>
 #include <QCoreApplication>
 #include <QEnterEvent>
@@ -15,7 +16,7 @@
 #include "CocoaWidgetSafeArea_p.h"
 #endif
 
-namespace FramelessKit
+namespace WindowHeler
 {
 namespace
 {
@@ -220,24 +221,32 @@ private:
     bool m_originalAutoFill     = false;
 };
 } // namespace
-class WidgetAgent::Private
+class FramelessWidgetAgent::Private
 {
 public:
-    explicit Private(QWidget* host) : window(host), controller(std::make_unique<WidgetHostAdapter>(host), false) {}
+    explicit Private(QWidget* host) : window(host), controller(std::make_unique<WidgetHostAdapter>(host), false)
+    {
+        context = Internal::windowheler_acquire_context(host);
+        Internal::windowheler_retain_capability(context, Internal::Capability::Frameless);
+    }
+    ~Private()
+    {
+        Internal::windowheler_release_capability(context, Internal::Capability::Frameless);
+        Internal::windowheler_release_context(context);
+    }
     QPointer<QWidget> window;
     QPointer<QWidget> titleBar;
     QPointer<QAbstractButton> maximizeButton;
     Internal::WindowController controller;
+    Internal::WindowContextHandle* context = nullptr;
 #ifdef Q_OS_MACOS
     std::unique_ptr<Internal::CocoaWidgetSafeArea> safeArea;
 #endif
 };
 
-WidgetAgent::WidgetAgent(QWidget* window) : QObject(window), d(new Private(window))
+FramelessWidgetAgent::FramelessWidgetAgent(QWidget* window) : QObject(window), d(new Private(window))
 {
-    connect(&d->controller, &Internal::WindowController::effectiveMaterialChanged, this,
-            &WidgetAgent::effectiveMaterialChanged);
-    connect(&d->controller, &Internal::WindowController::errorOccurred, this, &WidgetAgent::errorOccurred);
+    connect(&d->controller, &Internal::WindowController::errorOccurred, this, &FramelessWidgetAgent::errorOccurred);
 #ifdef Q_OS_MACOS
     if (d->controller.isBound() && QGuiApplication::platformName() == QStringLiteral("cocoa"))
     {
@@ -247,18 +256,18 @@ WidgetAgent::WidgetAgent(QWidget* window) : QObject(window), d(new Private(windo
 #endif
 }
 
-WidgetAgent::~WidgetAgent() = default;
-QWidget* WidgetAgent::window() const
+FramelessWidgetAgent::~FramelessWidgetAgent() = default;
+QWidget* FramelessWidgetAgent::window() const
 {
     return d->window;
 }
 
-QWidget* WidgetAgent::titleBar() const
+QWidget* FramelessWidgetAgent::titleBar() const
 {
     return d->titleBar;
 }
 
-void WidgetAgent::setTitleBar(QWidget* item)
+void FramelessWidgetAgent::setTitleBar(QWidget* item)
 {
     if (!d->controller.setTitleBar(item))
         return;
@@ -269,39 +278,21 @@ void WidgetAgent::setTitleBar(QWidget* item)
 #endif
 }
 
-void WidgetAgent::setInteractive(QWidget* widget, bool enabled)
+void FramelessWidgetAgent::setInteractive(QWidget* widget, bool enabled)
 {
     d->controller.setInteractive(widget, enabled);
 }
 
-QAbstractButton* WidgetAgent::maximizeButton() const
+QAbstractButton* FramelessWidgetAgent::maximizeButton() const
 {
     return d->maximizeButton;
 }
 
-void WidgetAgent::setMaximizeButton(QAbstractButton* button)
+void FramelessWidgetAgent::setMaximizeButton(QAbstractButton* button)
 {
-    const QPointer<WidgetAgent> guard(this);
+    const QPointer<FramelessWidgetAgent> guard(this);
     if (d->controller.setMaximizeButton(button) && guard)
         d->maximizeButton = button;
 }
 
-Material WidgetAgent::material() const
-{
-    return d->controller.material();
-}
-
-Material WidgetAgent::effectiveMaterial() const
-{
-    return d->controller.effectiveMaterial();
-}
-
-void WidgetAgent::setMaterial(Material value)
-{
-    const QPointer<WidgetAgent> guard(this);
-    const auto previous = material();
-    d->controller.setMaterial(value);
-    if (guard && previous != material())
-        emit materialChanged();
-}
-} // namespace FramelessKit
+} // namespace WindowHeler

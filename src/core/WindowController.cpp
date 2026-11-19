@@ -8,8 +8,8 @@
 #include <QTimer>
 #include <utility>
 
-Q_LOGGING_CATEGORY(fkWindow, "framelesskit.window")
-namespace FramelessKit::Internal
+Q_LOGGING_CATEGORY(fkWindow, "windowheler.window")
+namespace WindowHeler::Internal
 {
 namespace
 {
@@ -26,7 +26,7 @@ WindowController::WindowController(std::unique_ptr<HostAdapter> host, bool quick
         return;
     if (!isInitialized(quick))
     {
-        report(QStringLiteral("Call FramelessKit::initialize with the required "
+        report(QStringLiteral("Call WindowHeler::initialize with the required "
                               "frontend before creating an Agent."),
                true);
         return;
@@ -241,4 +241,4 @@ HitRegion WindowController::hitTest(QPointF point) const
         return HitRegion::Client;
     return m_hitTest.hitTest(*m_host, point);
 }
-} // namespace FramelessKit::Internal
+} // namespace WindowHeler::Internal

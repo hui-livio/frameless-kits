@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(FramelessKit VERSION 0.1.0 LANGUAGES CXX)
+project(WindowHeler VERSION 0.1.0 LANGUAGES CXX)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     enable_language(OBJCXX)
@@ -15,44 +15,46 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Keep legacy command-line switches working for standalone builds only.
-function(framelesskit_option name description default)
+function(windowheler_option name description default)
     if(PROJECT_IS_TOP_LEVEL AND DEFINED ${name})
         set(default "${${name}}")
     endif()
-    option(FRAMELESSKIT_${name} "${description}" "${default}")
+    option(WINDOWHELER_${name} "${description}" "${default}")
 endfunction()
 
-set(framelesskit_shared_default ON)
+set(windowheler_shared_default ON)
 if(DEFINED BUILD_SHARED_LIBS)
-    set(framelesskit_shared_default "${BUILD_SHARED_LIBS}")
+    set(windowheler_shared_default "${BUILD_SHARED_LIBS}")
 endif()
-option(FRAMELESSKIT_BUILD_SHARED_LIBS "Build FramelessKit shared libraries" "${framelesskit_shared_default}")
-framelesskit_option(BUILD_WIDGETS "Build the Widgets adapter" ON)
-framelesskit_option(BUILD_QUICK "Build the Quick adapter and QML module" ON)
-framelesskit_option(BUILD_EXAMPLES "Build example applications" "${PROJECT_IS_TOP_LEVEL}")
-framelesskit_option(BUILD_TESTING "Build FramelessKit tests" OFF)
-option(FRAMELESSKIT_INSTALL "Generate FramelessKit install rules" "${PROJECT_IS_TOP_LEVEL}")
+option(WINDOWHELER_BUILD_SHARED_LIBS "Build WindowHeler shared libraries" "${windowheler_shared_default}")
+windowheler_option(BUILD_FRAMELESS "Build the Frameless capability" ON)
+windowheler_option(BUILD_MATERIAL "Build the Material capability" ON)
+windowheler_option(BUILD_WIDGETS "Build the Widgets frontends" ON)
+windowheler_option(BUILD_QUICK "Build the Quick frontends and QML modules" ON)
+windowheler_option(BUILD_EXAMPLES "Build example applications" "${PROJECT_IS_TOP_LEVEL}")
+windowheler_option(BUILD_TESTING "Build WindowHeler tests" OFF)
+option(WINDOWHELER_INSTALL "Generate WindowHeler install rules" "${PROJECT_IS_TOP_LEVEL}")
 # Optional undocumented Windows compatibility path; modern DWM remains the default.
-framelesskit_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur" ON)
+windowheler_option(ENABLE_LEGACY_ACCENT "Enable Windows legacy Accent Blur" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    option(FRAMELESSKIT_ENABLE_X11 "Enable the native X11 window menu when available" ON)
-    option(FRAMELESSKIT_ENABLE_WAYLAND "Enable the native Wayland window menu when available" ON)
+    option(WINDOWHELER_ENABLE_X11 "Enable the native X11 window menu when available" ON)
+    option(WINDOWHELER_ENABLE_WAYLAND "Enable the native Wayland window menu when available" ON)
 endif()
-set(FRAMELESSKIT_PRIVATE_QT_VERSION "")
+set(WINDOWHELER_PRIVATE_QT_VERSION "")
 
-if(FRAMELESSKIT_BUILD_SHARED_LIBS)
-    set(FRAMELESSKIT_LIBRARY_TYPE SHARED)
+if(WINDOWHELER_BUILD_SHARED_LIBS)
+    set(WINDOWHELER_LIBRARY_TYPE SHARED)
 else()
-    set(FRAMELESSKIT_LIBRARY_TYPE STATIC)
+    set(WINDOWHELER_LIBRARY_TYPE STATIC)
 endif()
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui)
 
-if(FRAMELESSKIT_BUILD_WIDGETS)
+if(WINDOWHELER_BUILD_WIDGETS AND (WINDOWHELER_BUILD_FRAMELESS OR WINDOWHELER_BUILD_MATERIAL))
     find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
 endif()
 
-if(FRAMELESSKIT_BUILD_QUICK)
+if(WINDOWHELER_BUILD_QUICK AND (WINDOWHELER_BUILD_FRAMELESS OR WINDOWHELER_BUILD_MATERIAL))
     find_package(Qt6 6.8 REQUIRED COMPONENTS Qml Quick)
 endif()
 
@@ -60,7 +62,7 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FramelessKitTargets.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/WindowHelerTargets.cmake")
 
 # Keep standalone artifacts together; embedded builds honor the host's output paths.
 foreach(kind RUNTIME LIBRARY ARCHIVE)
@@ -75,23 +77,23 @@ endforeach()
 if(NOT DEFINED QT_QML_OUTPUT_DIRECTORY)
     set(QT_QML_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/qml")
 endif()
-set(FRAMELESSKIT_QML_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qml")
+set(WINDOWHELER_QML_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/qml")
 
 add_subdirectory(src/core)
 
-if(FRAMELESSKIT_BUILD_WIDGETS)
+if(WINDOWHELER_BUILD_WIDGETS)
     add_subdirectory(src/widgets)
 endif()
 
-if(FRAMELESSKIT_BUILD_QUICK)
+if(WINDOWHELER_BUILD_QUICK)
     add_subdirectory(src/quick)
 endif()
 
-if(FRAMELESSKIT_BUILD_EXAMPLES)
+if(WINDOWHELER_BUILD_EXAMPLES AND WINDOWHELER_BUILD_FRAMELESS AND WINDOWHELER_BUILD_MATERIAL)
     add_subdirectory(example)
 endif()
 
-if(FRAMELESSKIT_BUILD_TESTING)
+if(WINDOWHELER_BUILD_TESTING)
     if(PROJECT_IS_TOP_LEVEL)
         include(CTest)
     endif()
@@ -100,30 +102,27 @@ if(FRAMELESSKIT_BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
-if(FRAMELESSKIT_INSTALL)
-    configure_package_config_file(cmake/FramelessKitConfig.cmake.in
-        "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
-        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
-        PATH_VARS FRAMELESSKIT_QML_INSTALL_DIR
+if(WINDOWHELER_INSTALL)
+    configure_package_config_file(cmake/WindowHelerConfig.cmake.in
+        "${PROJECT_BINARY_DIR}/WindowHelerConfig.cmake"
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/WindowHeler"
+        PATH_VARS WINDOWHELER_QML_INSTALL_DIR
     )
 
     write_basic_package_version_file(
-        "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
+        "${PROJECT_BINARY_DIR}/WindowHelerConfigVersion.cmake"
         VERSION "${PROJECT_VERSION}"
         COMPATIBILITY SameMinorVersion
     )
 
-    if(FRAMELESSKIT_BUILD_WIDGETS)
-        install(EXPORT FramelessKitWidgetsTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
-    endif()
-
-    if(FRAMELESSKIT_BUILD_QUICK)
-        install(EXPORT FramelessKitQuickTargets NAMESPACE FramelessKit:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit")
-    endif()
+    install(EXPORT WindowHelerTargets
+        NAMESPACE WindowHeler::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/WindowHeler"
+    )
 
     install(FILES
-        "${PROJECT_BINARY_DIR}/FramelessKitConfig.cmake"
-        "${PROJECT_BINARY_DIR}/FramelessKitConfigVersion.cmake"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/FramelessKit"
+        "${PROJECT_BINARY_DIR}/WindowHelerConfig.cmake"
+        "${PROJECT_BINARY_DIR}/WindowHelerConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/WindowHeler"
     )
 endif()

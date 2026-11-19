@@ -1,4 +1,4 @@
-#include <FramelessKit/Export.h>
+#include <WindowHeler/Export.h>
 #include <string_view>
 
 #define FK_STRINGIFY_IMPL(value) #value
@@ -6,11 +6,11 @@
 
 namespace
 {
-constexpr std::string_view coreExport    = FK_STRINGIFY(FRAMELESSKIT_CORE_EXPORT);
-constexpr std::string_view widgetsExport = FK_STRINGIFY(FRAMELESSKIT_WIDGETS_EXPORT);
-constexpr std::string_view quickExport   = FK_STRINGIFY(FRAMELESSKIT_QUICK_EXPORT);
+constexpr std::string_view coreExport    = FK_STRINGIFY(WINDOWHELER_CORE_EXPORT);
+constexpr std::string_view widgetsExport = FK_STRINGIFY(WINDOWHELER_WIDGETS_EXPORT);
+constexpr std::string_view quickExport   = FK_STRINGIFY(WINDOWHELER_QUICK_EXPORT);
 
-#if defined(FRAMELESSKIT_STATIC)
+#if defined(WINDOWHELER_STATIC)
 // MSVC's traditional preprocessor can retain whitespace before an empty macro.
 constexpr std::string_view trim(std::string_view value)
 {
@@ -21,17 +21,17 @@ static_assert(trim(coreExport) == "fk_export_sentinel");
 static_assert(trim(widgetsExport) == "fk_export_sentinel");
 static_assert(trim(quickExport) == "fk_export_sentinel");
 #else
-#if defined(FRAMELESSKIT_BUILD_CORE)
+#if defined(WINDOWHELER_BUILD_CORE)
 static_assert(coreExport == FK_STRINGIFY(Q_DECL_EXPORT));
 #else
 static_assert(coreExport == FK_STRINGIFY(Q_DECL_IMPORT));
 #endif
-#if defined(FRAMELESSKIT_BUILD_WIDGETS)
+#if defined(WINDOWHELER_BUILD_WIDGETS)
 static_assert(widgetsExport == FK_STRINGIFY(Q_DECL_EXPORT));
 #else
 static_assert(widgetsExport == FK_STRINGIFY(Q_DECL_IMPORT));
 #endif
-#if defined(FRAMELESSKIT_BUILD_QUICK)
+#if defined(WINDOWHELER_BUILD_QUICK)
 static_assert(quickExport == FK_STRINGIFY(Q_DECL_EXPORT));
 #else
 static_assert(quickExport == FK_STRINGIFY(Q_DECL_IMPORT));
