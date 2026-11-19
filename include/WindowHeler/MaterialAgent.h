@@ -17,20 +17,12 @@ class WINDOWHELER_MATERIAL_QUICK_EXPORT MaterialAgent : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    QML_EXTENDED_NAMESPACE(WindowHeler)
     Q_PROPERTY(QQuickWindow* window READ window WRITE setWindow NOTIFY windowChanged)
-    Q_PROPERTY(Material material READ material WRITE setMaterial NOTIFY materialChanged)
-    Q_PROPERTY(Material effectiveMaterial READ effectiveMaterial NOTIFY effectiveMaterialChanged)
+    Q_PROPERTY(WindowHeler::Material material READ material WRITE setMaterial NOTIFY materialChanged)
+    Q_PROPERTY(WindowHeler::Material effectiveMaterial READ effectiveMaterial NOTIFY effectiveMaterialChanged)
 public:
-    enum class Material
-    {
-        Solid,
-        Transparent,
-        Blur,
-        Acrylic,
-        Mica,
-        MicaAlt
-    };
-    Q_ENUM(Material)
+    using Material = WindowHeler::Material;
     explicit MaterialAgent(QObject* parent = nullptr);
     ~MaterialAgent() override;
     QQuickWindow* window() const;

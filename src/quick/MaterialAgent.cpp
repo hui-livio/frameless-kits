@@ -283,7 +283,7 @@ void MaterialAgent::setWindow(QQuickWindow* value)
         d->controller = std::move(controller);
         d->windowDestroyed = connect(target, &QObject::destroyed, this, [this] { setWindow(nullptr); });
         connect(d->controller.get(), &Internal::WindowController::errorOccurred, this, &MaterialAgent::errorOccurred);
-        d->controller->setMaterial(static_cast<WindowHeler::Material>(d->requested));
+        d->controller->setMaterial(d->requested);
         if (!current())
             return;
         connect(d->controller.get(), &Internal::WindowController::effectiveMaterialChanged, this,
@@ -300,7 +300,7 @@ MaterialAgent::Material MaterialAgent::material() const
 }
 MaterialAgent::Material MaterialAgent::effectiveMaterial() const
 {
-    return static_cast<Material>(d->controller ? d->controller->effectiveMaterial() : WindowHeler::Material::Solid);
+    return d->controller ? d->controller->effectiveMaterial() : Material::Solid;
 }
 void MaterialAgent::setMaterial(Material value)
 {
@@ -314,7 +314,7 @@ void MaterialAgent::setMaterial(Material value)
     const QPointer<MaterialAgent> guard(this);
     const auto previous = std::exchange(d->requested, value);
     if (d->controller)
-        d->controller->setMaterial(static_cast<WindowHeler::Material>(value));
+        d->controller->setMaterial(value);
     if (guard && previous != value && d->requested == value)
         emit materialChanged();
 }
