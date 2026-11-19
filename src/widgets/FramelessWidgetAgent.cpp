@@ -59,14 +59,17 @@ public:
             m_root->setAttribute(Qt::WA_NoSystemBackground);
             m_root->setAttribute(Qt::WA_OpaquePaintEvent, false);
             m_root->setAutoFillBackground(false);
+            m_lastNoBackground = true;
+            m_lastOpaque       = false;
+            m_lastAutoFill     = false;
         }
         else
         {
-            if (m_root->testAttribute(Qt::WA_NoSystemBackground))
+            if (m_root->testAttribute(Qt::WA_NoSystemBackground) == m_lastNoBackground)
                 m_root->setAttribute(Qt::WA_NoSystemBackground, m_originalNoBackground);
-            if (!m_root->testAttribute(Qt::WA_OpaquePaintEvent))
+            if (m_root->testAttribute(Qt::WA_OpaquePaintEvent) == m_lastOpaque)
                 m_root->setAttribute(Qt::WA_OpaquePaintEvent, m_originalOpaque);
-            if (!m_root->autoFillBackground())
+            if (m_root->autoFillBackground() == m_lastAutoFill)
                 m_root->setAutoFillBackground(m_originalAutoFill);
         }
         m_materialBackground = enabled;
@@ -218,6 +221,9 @@ private:
     bool m_originalNoBackground = false;
     bool m_originalOpaque       = false;
     bool m_originalAutoFill     = false;
+    bool m_lastNoBackground     = false;
+    bool m_lastOpaque           = false;
+    bool m_lastAutoFill         = false;
 };
 } // namespace
 class FramelessWidgetAgent::Private
