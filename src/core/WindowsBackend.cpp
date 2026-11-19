@@ -72,11 +72,14 @@ public:
         if (!guard)
             return false;
         if (!ok)
-            synchronizeNative(m_material.applied());
+            synchronizeNative(m_materialState);
         if (!guard)
             return false;
         if (ok)
+        {
+            m_materialState = material;
             scheduleMaterialSurfaceRefresh();
+        }
         return ok;
     }
     bool materialReady() const override
@@ -125,7 +128,7 @@ protected:
     }
     void synchronizeNative() override
     {
-        synchronizeNative(m_material.applied());
+        synchronizeNative(m_materialState);
     }
     void synchronizeNative(Material material)
     {
@@ -236,6 +239,7 @@ protected:
         m_material = {};
         m_materialSurfaceRefreshed      = false;
         m_materialSurfaceRefreshPending = false;
+        m_materialState                 = Material::Solid;
         m_hwnd                          = nullptr;
         m_nativeTopInset                 = false;
         const bool hadNativeFrame = std::exchange(m_nativeFrameApplied, false);
@@ -330,7 +334,7 @@ private:
         // composition surface until the first resize/move. Plain transparency needs
         // this too, even with a valid alpha buffer. Widgets do not need it.
         if (m_materialSurfaceRefreshed || m_materialSurfaceRefreshPending || !m_hwnd || !m_host.host() ||
-            m_host.host()->isWidgetType() || m_material.applied() == Material::Solid)
+            m_host.host()->isWidgetType() || m_materialState == Material::Solid)
             return;
         m_materialSurfaceRefreshPending = true;
         const quint64 generation        = m_generation;
@@ -341,7 +345,7 @@ private:
                                    return;
                                m_materialSurfaceRefreshPending = false;
                                if (!m_hwnd || !IsWindowVisible(m_hwnd) || IsZoomed(m_hwnd) || IsIconic(m_hwnd) ||
-                                   m_host.fullScreen() || m_material.applied() == Material::Solid)
+                                   m_host.fullScreen() || m_materialState == Material::Solid)
                                    return; // A later show/restore retries; do not alter maximized geometry.
                                RECT frame{};
                                if (!GetWindowRect(m_hwnd, &frame))
@@ -551,7 +555,6 @@ private:
         case WM_THEMECHANGED:
         case WM_SYSCOLORCHANGE:
         case WM_DWMCOLORIZATIONCOLORCHANGED:
-            m_material.invalidate();
             scheduleSynchronize();
             return false;
         default:
@@ -782,6 +785,7 @@ private:
     bool m_nativeFilterInstalled         = false;
     bool m_materialSurfaceRefreshed       = false;
     bool m_materialSurfaceRefreshPending  = false;
+    Material m_materialState              = Material::Solid;
     bool m_nativeTopInset                 = false;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;
     bool m_haveOriginalPolicy = false;

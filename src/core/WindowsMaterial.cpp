@@ -101,7 +101,6 @@ void WindowsMaterial::bind(HWND window)
         DwmGetWindowAttribute(window, systemBackdropAttribute, &m_originalBackdrop, sizeof(m_originalBackdrop)));
     m_haveDark =
         SUCCEEDED(DwmGetWindowAttribute(window, immersiveDarkAttribute(), &m_originalDark, sizeof(m_originalDark)));
-    m_valid = false;
     // Match Windows10BorderHandler::setupNecessaryAttributes(): prepare the
     // native border at HWND binding, before the first show/material/popup.
     if (m_haveDark && SUCCEEDED(setDarkAppearance(window, TRUE)))
@@ -153,11 +152,7 @@ bool WindowsMaterial::clear(QString& error)
             error = failure("DwmEnableBlurBehindWindow(disable)", hr);
         }
     }
-    // A partial clear is not Solid. Keep the last confirmed material and the
-    // failed ownership flags for retry; successful clears remain recorded above.
-    if (ok)
-        m_applied = Material::Solid;
-    m_valid = false;
+    // Successful clears reset the owned flags. Failed flags remain for retry.
     return ok;
 }
 bool WindowsMaterial::restoreDark(QString& error)
@@ -206,7 +201,6 @@ void WindowsMaterial::release(bool restore)
     m_window          = nullptr;
     m_backdropChanged = m_blurChanged = m_accentChanged = m_darkChanged = false;
     m_haveBackdrop = m_haveDark = m_backdropOwned = false;
-    m_valid                                       = false;
 }
 bool WindowsMaterial::apply(Material material, const QColor& color, QString& error)
 {
@@ -229,8 +223,6 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             return false;
         }
     }
-    if (m_valid && m_applied == material && m_color == color)
-        return true;
     if (!clear(error))
         return false;
     // Solid, Transparent and Blur share qwindowkit's dark native border.
@@ -303,9 +295,6 @@ bool WindowsMaterial::apply(Material material, const QColor& color, QString& err
             m_blurChanged = true;
         }
     }
-    m_applied = material;
-    m_color   = color;
-    m_valid   = true;
     return true;
 }
 } // namespace WindowHeler::Internal
