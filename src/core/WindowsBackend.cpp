@@ -77,8 +77,12 @@ public:
             return false;
         if (ok)
         {
+            // Clearing a native material can leave the extended top pixel opaque.
+            // Refresh it again when returning to Solid, just as on first show.
+            if (material == Material::Solid && m_materialState != Material::Solid)
+                m_topInsetSurfaceRefreshed = false;
             m_materialState = material;
-            scheduleMaterialSurfaceRefresh();
+            scheduleCompositionSurfaceRefresh();
         }
         return ok;
     }
@@ -237,11 +241,12 @@ protected:
         const LONG_PTR appliedStyle = m_appliedStyle;
         WindowsMaterial material = m_material;
         m_material = {};
-        m_materialSurfaceRefreshed      = false;
-        m_materialSurfaceRefreshPending = false;
-        m_materialState                 = Material::Solid;
-        m_hwnd                          = nullptr;
-        m_nativeTopInset                 = false;
+        m_materialSurfaceRefreshed = false;
+        m_topInsetSurfaceRefreshed = false;
+        m_surfaceRefreshPending   = false;
+        m_materialState           = Material::Solid;
+        m_hwnd                    = nullptr;
+        m_nativeTopInset           = false;
         const bool hadNativeFrame = std::exchange(m_nativeFrameApplied, false);
         const quint64 generation = ++m_generation;
         m_host.setNativeTopInset(false);
@@ -328,29 +333,34 @@ private:
         m_nativeTopInset = extended && margins.cyTopHeight == 1;
         m_host.setNativeTopInset(m_nativeTopInset);
     }
-    void scheduleMaterialSurfaceRefresh()
+    bool needsCompositionSurfaceRefresh() const
     {
-        // qwindowkit's effectBugWorkaround: Quick may keep the old native
-        // composition surface until the first resize/move. Plain transparency needs
-        // this too, even with a valid alpha buffer. Widgets do not need it.
-        if (m_materialSurfaceRefreshed || m_materialSurfaceRefreshPending || !m_hwnd || !m_host.host() ||
-            m_host.host()->isWidgetType() || m_materialState == Material::Solid)
+        return (m_nativeTopInset && !m_topInsetSurfaceRefreshed) ||
+               (m_materialState != Material::Solid && !m_materialSurfaceRefreshed);
+    }
+    void scheduleCompositionSurfaceRefresh()
+    {
+        // Quick can keep a stale composition surface until the first resize/move.
+        // This affects the extended Win10 top pixel even when starting in Solid.
+        if (m_surfaceRefreshPending || !m_hwnd || !m_host.host() || m_host.host()->isWidgetType() ||
+            !needsCompositionSurfaceRefresh())
             return;
-        m_materialSurfaceRefreshPending = true;
-        const quint64 generation        = m_generation;
+        m_surfaceRefreshPending   = true;
+        const quint64 generation = m_generation;
         QTimer::singleShot(0, this,
                            [this, generation]
                            {
                                if (generation != m_generation)
                                    return;
-                               m_materialSurfaceRefreshPending = false;
+                               m_surfaceRefreshPending = false;
                                if (!m_hwnd || !IsWindowVisible(m_hwnd) || IsZoomed(m_hwnd) || IsIconic(m_hwnd) ||
-                                   m_host.fullScreen() || m_materialState == Material::Solid)
+                                   m_host.fullScreen() || !needsCompositionSurfaceRefresh())
                                    return; // A later show/restore retries; do not alter maximized geometry.
                                RECT frame{};
                                if (!GetWindowRect(m_hwnd, &frame))
                                    return;
-                               m_materialSurfaceRefreshed = true;
+                               m_topInsetSurfaceRefreshed |= m_nativeTopInset;
+                               m_materialSurfaceRefreshed |= m_materialState != Material::Solid;
                                const QPointer<WindowsBackend> guard(this);
                                const HWND hwnd  = m_hwnd;
                                const auto valid = [&]
@@ -781,11 +791,12 @@ private:
         }
     }
     WindowsMaterial m_material;
-    bool m_nativeFrameApplied            = false;
-    bool m_destroying                    = false;
-    bool m_nativeFilterInstalled         = false;
+    bool m_nativeFrameApplied             = false;
+    bool m_destroying                     = false;
+    bool m_nativeFilterInstalled          = false;
     bool m_materialSurfaceRefreshed       = false;
-    bool m_materialSurfaceRefreshPending  = false;
+    bool m_topInsetSurfaceRefreshed       = false;
+    bool m_surfaceRefreshPending          = false;
     Material m_materialState              = Material::Solid;
     bool m_nativeTopInset                 = false;
     DWMNCRENDERINGPOLICY m_originalPolicy = DWMNCRP_USEWINDOWSTYLE;

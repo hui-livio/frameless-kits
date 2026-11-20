@@ -10,6 +10,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QScreen>
 #include <QSignalSpy>
 #include <QtTest>
 
@@ -18,7 +19,107 @@ class QuickNativeTests : public QObject
 {
     Q_OBJECT
 private slots:
+    void solidTopBorderVisibleOnFirstShow()
+    {
+        if (QOperatingSystemVersion::current().microVersion() >= 22000)
+            QSKIP("Windows 11 keeps its native top border outside the Quick scene.");
+
+        QQuickWindow window;
+        window.setFlag(Qt::WindowStaysOnTopHint);
+        window.resize(320, 200);
+        window.setColor(Qt::white);
+        WindowHeler::FramelessAgent frame;
+        frame.setWindow(&window);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+        const HWND hwnd = nativeHandle(&window);
+        auto showsBorder = [hwnd] {
+            RECT client{};
+            GetClientRect(hwnd, &client);
+            POINT top{ client.right / 2, 0 };
+            ClientToScreen(hwnd, &top);
+            HDC screen = GetDC(nullptr);
+            if (!screen)
+                return false;
+            const auto border = GetPixel(screen, top.x, top.y);
+            const auto fill   = GetPixel(screen, top.x, top.y + 1);
+            ReleaseDC(nullptr, screen);
+            return fill == RGB(255, 255, 255) && border != CLR_INVALID &&
+                   qGray(GetRValue(border), GetGValue(border), GetBValue(border)) < 224;
+        };
+        QTRY_VERIFY(showsBorder());
+        QCOMPARE(window.size(), QSize(320, 200));
+    }
 #ifdef TEST_WINDOW_MATERIAL
+    void solidTopBorderMatchesSidesAfterMaterialSwitch()
+    {
+        if (QOperatingSystemVersion::current().microVersion() >= 22000)
+            QSKIP("Windows 11 keeps its native top border outside the Quick scene.");
+
+        using WindowHeler::Material;
+        const auto origin = QGuiApplication::primaryScreen()->availableGeometry().topLeft();
+        QQuickWindow underlay;
+        underlay.setFlags(Qt::Window | Qt::FramelessWindowHint);
+        underlay.setGeometry(QRect(origin + QPoint(60, 60), QSize(520, 380)));
+        underlay.setColor(Qt::white);
+        underlay.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&underlay));
+
+        QQuickWindow window;
+        window.setFlag(Qt::WindowStaysOnTopHint);
+        window.setGeometry(QRect(origin + QPoint(140, 140), QSize(320, 200)));
+        window.setColor(Qt::white);
+        WindowHeler::FramelessAgent frame;
+        WindowHeler::MaterialAgent material;
+        frame.setWindow(&window);
+        material.setWindow(&window);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const HWND hwnd = nativeHandle(&window);
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        SetForegroundWindow(hwnd);
+        if (!QTest::qWaitForWindowActive(&window))
+            QSKIP("Cannot activate the window to sample the active DWM border.");
+
+        // Compare the composited edges against the same white underlay.
+        const auto hasMatchingBorder = [hwnd] {
+            RECT client{};
+            POINT clientOrigin{};
+            if (!GetClientRect(hwnd, &client) || !ClientToScreen(hwnd, &clientOrigin) || GetForegroundWindow() != hwnd)
+                return false;
+            HDC screen = GetDC(nullptr);
+            if (!screen)
+                return false;
+            const auto pixel = [&](LONG x, LONG y) { return GetPixel(screen, clientOrigin.x + x, clientOrigin.y + y); };
+            const LONG centerX = client.right / 2;
+            const LONG centerY = client.bottom / 2;
+            const auto top = pixel(centerX, 0);
+            const auto outsideTop = pixel(centerX, -1);
+            const bool matches = top != CLR_INVALID && top != RGB(255, 255, 255) && outsideTop != CLR_INVALID &&
+                                 top == pixel(-1, centerY) && top == pixel(client.right, centerY) &&
+                                 top == pixel(centerX, client.bottom) && outsideTop != top &&
+                                 pixel(centerX, 1) == RGB(255, 255, 255);
+            ReleaseDC(nullptr, screen);
+            return matches;
+        };
+        QTRY_VERIFY(hasMatchingBorder());
+        const QRect geometry = window.geometry();
+        QSignalSpy frames(&window, &QQuickWindow::frameSwapped);
+        for (int cycle = 0; cycle < 2; ++cycle)
+        {
+            frames.clear();
+            material.setMaterial(Material::Transparent);
+            QCOMPARE(material.effectiveMaterial(), Material::Transparent);
+            QTRY_VERIFY(!frames.isEmpty());
+            frames.clear();
+            material.setMaterial(Material::Solid);
+            QCOMPARE(material.effectiveMaterial(), Material::Solid);
+            QTRY_VERIFY(!frames.isEmpty());
+            QTRY_VERIFY(hasMatchingBorder());
+            QCOMPARE(window.geometry(), geometry);
+        }
+    }
     void solidLeavesOneNativeTopPixel_data()
     {
         QTest::addColumn<bool>("materialFirst");

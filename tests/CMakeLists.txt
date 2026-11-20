@@ -105,7 +105,7 @@ endif()
 
 if(WIN32 AND TARGET WindowHeler::FramelessQuick)
     windowheler_add_test(windowheler_quick_native_tests QuickNativeTests.cpp WindowHeler::FramelessQuick)
-    target_link_libraries(windowheler_quick_native_tests PRIVATE user32)
+    target_link_libraries(windowheler_quick_native_tests PRIVATE user32 gdi32)
     if(TARGET WindowHeler::MaterialQuick)
         target_link_libraries(windowheler_quick_native_tests PRIVATE WindowHeler::MaterialQuick)
         target_compile_definitions(windowheler_quick_native_tests PRIVATE TEST_WINDOW_MATERIAL
